@@ -39,6 +39,10 @@ app.post('/webhook', (req, res) => {
       handleMessage(update.message);
     }
     
+    if (update.callback_query) {
+      handleCallbackQuery(update.callback_query);
+    }
+    
     res.status(200).send('OK');
   } catch (error) {
     console.error('Ошибка при обработке webhook:', error);
@@ -64,25 +68,23 @@ function handleMessage(message) {
     return;
   }
   
-  // Увеличиваем счетчик сообщений для пользователя
-  const userId = user.id;
-  const currentCount = messageCounters.get(userId) || 0;
-  const newCount = currentCount + 1;
-  messageCounters.set(userId, newCount);
-  
-  // Формируем ответ
-  const response = `📨 Сообщение #${newCount}
-👤 Пользователь: ${fullUserName}
-💬 Текст: ${text || '[Нет текста]'}`;
-  
-  // Отправляем ответ
-  bot.sendMessage(chatId, response)
+  // Обработка обычных сообщений - показываем структуру транзакции
+  if (text) {
+    const transactionStructure = createTransactionStructure(text);
+    const inlineKeyboard = createTransactionKeyboard();
+    
+    bot.sendMessage(chatId, transactionStructure, {
+      reply_markup: {
+        inline_keyboard: inlineKeyboard
+      }
+    })
     .then(() => {
-      console.log(`Отправлен ответ пользователю ${fullUserName} (ID: ${userId})`);
+      console.log(`Отправлена структура транзакции пользователю ${fullUserName} (ID: ${user.id})`);
     })
     .catch((error) => {
-      console.error('Ошибка при отправке сообщения:', error);
+      console.error('Ошибка при отправке структуры транзакции:', error);
     });
+  }
 }
 
 // Функция обработки команд
@@ -114,13 +116,17 @@ function handleCommand(message) {
 function handleStartCommand(chatId, userName) {
   const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${userName}!
 
-Доступные команды:
+💰 **Основной функционал:**
+Отправьте любое сообщение, и бот покажет структуру транзакции с возможностью применить, отменить или скорректировать.
+
+📋 **Доступные команды:**
 /start - приветствие
 /accounts - показать все счета из ZenMoney
 /accounts_upd - обновить счета в Supabase
 /tags_upd - обновить теги в Supabase
 
-Просто отправьте любое сообщение для тестирования!`;
+💡 **Как использовать:**
+Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
   
   bot.sendMessage(chatId, welcomeMessage)
     .then(() => {
@@ -530,6 +536,83 @@ async function handleTagsUpdCommand(chatId, userName) {
       // Если loadingMessage не определена, отправляем новое сообщение
       bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
     }
+  }
+}
+
+// Функция создания структуры транзакции
+function createTransactionStructure(comment) {
+  return `💰 **Структура транзакции:**
+
+📝 **Статья:** Продукты
+💳 **Счет:** Бумажник  
+💵 **Сумма:** 500 000 UZS
+💬 **Комментарий:** ${comment}`;
+}
+
+// Функция создания инлайн клавиатуры
+function createTransactionKeyboard() {
+  return [
+    [
+      {
+        text: '✅ Применить',
+        callback_data: 'transaction_apply'
+      },
+      {
+        text: '❌ Отменить', 
+        callback_data: 'transaction_cancel'
+      }
+    ],
+    [
+      {
+        text: '✏️ Скорректировать',
+        callback_data: 'transaction_edit'
+      }
+    ]
+  ];
+}
+
+// Обработчик callback query
+function handleCallbackQuery(callbackQuery) {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const data = callbackQuery.data;
+  const user = callbackQuery.from;
+  const userName = user.first_name || user.username || 'Неизвестный пользователь';
+  
+  // Отвечаем на callback query
+  bot.answerCallbackQuery(callbackQuery.id)
+    .then(() => {
+      console.log(`Обработан callback от пользователя ${userName}: ${data}`);
+    })
+    .catch((error) => {
+      console.error('Ошибка при ответе на callback query:', error);
+    });
+  
+  // Обработка различных действий
+  switch (data) {
+    case 'transaction_apply':
+      bot.editMessageText('✅ Транзакция применена!', {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      break;
+      
+    case 'transaction_cancel':
+      bot.editMessageText('❌ Транзакция отменена.', {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      break;
+      
+    case 'transaction_edit':
+      bot.editMessageText('✏️ Режим редактирования транзакции.\n\nОтправьте новое сообщение с исправленными данными.', {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      break;
+      
+    default:
+      console.log(`Неизвестный callback data: ${data}`);
   }
 }
 
