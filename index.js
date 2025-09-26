@@ -1,6 +1,7 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const SupabaseClient = require('./src/supabase/client');
 require('dotenv').config();
 
 const app = express();
@@ -14,6 +15,14 @@ if (!token) {
 }
 
 const bot = new TelegramBot(token, { polling: false });
+
+// Инициализация Supabase клиента
+let supabaseClient;
+try {
+  supabaseClient = new SupabaseClient();
+} catch (error) {
+  console.error('Ошибка инициализации Supabase клиента:', error.message);
+}
 
 // Middleware для парсинга JSON
 app.use(express.json());
@@ -90,6 +99,9 @@ function handleCommand(message) {
     case '/accounts':
       handleAccountsCommand(chatId, userName);
       break;
+    case '/accounts_upd':
+      handleAccountsUpdCommand(chatId, userName);
+      break;
     default:
       bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.');
   }
@@ -102,6 +114,7 @@ function handleStartCommand(chatId, userName) {
 Доступные команды:
 /start - приветствие
 /accounts - показать все счета из ZenMoney
+/accounts_upd - обновить счета в Supabase
 
 Просто отправьте любое сообщение для тестирования!`;
   
@@ -217,6 +230,129 @@ function formatAccountDetails(account, index, total) {
   });
   
   return text;
+}
+
+// Обработчик команды /accounts_upd
+async function handleAccountsUpdCommand(chatId, userName) {
+  const zenMoneyToken = process.env.ZENMONEY_TOKEN;
+  
+  if (!zenMoneyToken) {
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    return;
+  }
+  
+  if (!supabaseClient) {
+    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+    return;
+  }
+  
+  try {
+    // Отправляем сообщение о начале процесса
+    const loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление счетов в Supabase...');
+    
+    // Получаем данные из ZenMoney API
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: currentTimestamp,
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${zenMoneyToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 30000
+    });
+    
+    const data = response.data;
+    const accounts = data.account || {};
+    
+    if (Object.keys(accounts).length === 0) {
+      await bot.editMessageText('❌ Счета не найдены в ZenMoney', {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Обновляем статус
+    await bot.editMessageText('🔄 Получены счета из ZenMoney. Очищаем таблицу в Supabase...', {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    // Очищаем таблицу в Supabase
+    const clearResult = await supabaseClient.clearAccounts();
+    if (!clearResult.success) {
+      await bot.editMessageText(`❌ Ошибка при очистке таблицы: ${clearResult.error}`, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Обновляем статус
+    await bot.editMessageText('🔄 Таблица очищена. Загружаем счета в Supabase...', {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    // Преобразуем счета для Supabase
+    const accountsForSupabase = Object.values(accounts).map(account => ({
+      id: account.id,
+      user_id: account.user,
+      instrument_id: account.instrument,
+      type: account.type,
+      title: account.title,
+      balance: account.balance || 0,
+      start_balance: account.startBalance || 0,
+      credit_limit: account.creditLimit || 0,
+      in_balance: account.inBalance !== false,
+      private: account.private === true,
+      savings: account.savings === true,
+      archive: account.archive === true,
+      enable_correction: account.enableCorrection !== false,
+      enable_sms: account.enableSMS === true,
+      balance_correction_type: account.balanceCorrectionType,
+      capitalization: account.capitalization,
+      percent: account.percent,
+      start_date: account.startDate ? new Date(account.startDate * 1000).toISOString().split('T')[0] : null,
+      end_date_offset: account.endDateOffset,
+      end_date_offset_interval: account.endDateOffsetInterval,
+      payoff_step: account.payoffStep,
+      payoff_interval: account.payoffInterval,
+      company_id: account.company,
+      role: account.role,
+      sync_id: account.syncID,
+      changed: account.changed
+    }));
+    
+    // Вставляем счета в Supabase
+    const insertResult = await supabaseClient.insertAccounts(accountsForSupabase);
+    if (!insertResult.success) {
+      await bot.editMessageText(`❌ Ошибка при загрузке счетов: ${insertResult.error}`, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Успешное завершение
+    await bot.editMessageText(`✅ Счета успешно обновлены в Supabase!\n\n📊 Загружено: ${accountsForSupabase.length} счетов`, {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    console.log(`Счета обновлены в Supabase пользователем ${userName} (${accountsForSupabase.length} счетов)`);
+    
+  } catch (error) {
+    console.error('Ошибка при обновлении счетов:', error);
+    await bot.editMessageText('❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.', {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+  }
 }
 
 // Вспомогательные функции
