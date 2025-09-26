@@ -91,13 +91,13 @@ function handleCommand(message) {
       handleAccountsCommand(chatId, userName);
       break;
     default:
-      bot.sendMessage(chatId, '❓ Неизвестная команда. Используйте /start для начала работы.');
+      bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.');
   }
 }
 
 // Обработчик команды /start
 function handleStartCommand(chatId, userName) {
-  const welcomeMessage = `🤖 Добро пожаловать в ZenMoney Bot, ${userName}!
+  const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${userName}!
 
 Доступные команды:
 /start - приветствие
@@ -119,13 +119,13 @@ async function handleAccountsCommand(chatId, userName) {
   const zenMoneyToken = process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
-    bot.sendMessage(chatId, '❌ ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
     return;
   }
   
   try {
     // Отправляем сообщение о загрузке
-    const loadingMessage = await bot.sendMessage(chatId, '🔄 Загружаем счета из ZenMoney...');
+    const loadingMessage = await bot.sendMessage(chatId, 'Загружаем счета из ZenMoney...');
     
     // Получаем данные из ZenMoney API
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -146,7 +146,7 @@ async function handleAccountsCommand(chatId, userName) {
     const accounts = data.account || {};
     
     if (Object.keys(accounts).length === 0) {
-      await bot.editMessageText('📭 Счета не найдены', {
+      await bot.editMessageText('Счета не найдены', {
         chat_id: chatId,
         message_id: loadingMessage.message_id
       });
@@ -154,14 +154,21 @@ async function handleAccountsCommand(chatId, userName) {
     }
     
     // Формируем список счетов
-    let responseText = `💰 Ваши счета (${Object.keys(accounts).length}):\n\n`;
+    let responseText = `Ваши счета (${Object.keys(accounts).length}):\n\n`;
     
     Object.values(accounts).forEach((account, index) => {
       const balance = account.balance ? `${account.balance}` : '0';
-      const type = getAccountTypeEmoji(account.type);
-      responseText += `${index + 1}. ${type} ${account.title}\n`;
-      responseText += `   💵 Баланс: ${balance}\n`;
-      responseText += `   🆔 ID: ${account.id}\n\n`;
+      const currency = account.currency ? account.currency : 'не указана';
+      const type = account.type ? account.type : 'не указан';
+      
+      responseText += `${index + 1}. ${account.title}\n`;
+      responseText += `   Тип: ${type}\n`;
+      responseText += `   Валюта: ${currency}\n`;
+      responseText += `   Текущий баланс: ${balance}\n`;
+      responseText += `   Накопительный счет: ${account.savings ? 'да' : 'нет'}\n`;
+      responseText += `   Включать в баланс: ${account.inBalance ? 'да' : 'нет'}\n`;
+      responseText += `   Счет по умолчанию: ${account.isDefault ? 'да' : 'нет'}\n`;
+      responseText += `   Архивный счет: ${account.isArchived ? 'да' : 'нет'}\n\n`;
     });
     
     // Если сообщение слишком длинное, разбиваем на части
@@ -188,7 +195,7 @@ async function handleAccountsCommand(chatId, userName) {
     
   } catch (error) {
     console.error('Ошибка при получении счетов:', error);
-    await bot.editMessageText('❌ Ошибка при получении счетов из ZenMoney. Проверьте токен и попробуйте позже.', {
+    await bot.editMessageText('Ошибка при получении счетов из ZenMoney. Проверьте токен и попробуйте позже.', {
       chat_id: chatId,
       message_id: loadingMessage.message_id
     });
@@ -196,17 +203,6 @@ async function handleAccountsCommand(chatId, userName) {
 }
 
 // Вспомогательные функции
-function getAccountTypeEmoji(type) {
-  const emojiMap = {
-    'checking': '🏦',
-    'ccard': '💳',
-    'debt': '📊',
-    'cash': '💵',
-    'deposit': '🏛️',
-    'loan': '🏦'
-  };
-  return emojiMap[type] || '💰';
-}
 
 function splitMessage(text, maxLength) {
   const chunks = [];
