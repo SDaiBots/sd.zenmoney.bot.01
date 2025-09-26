@@ -153,42 +153,22 @@ async function handleAccountsCommand(chatId, userName) {
       return;
     }
     
-    // Формируем список счетов
-    let responseText = `Ваши счета (${Object.keys(accounts).length}):\n\n`;
+    // Удаляем сообщение о загрузке
+    await bot.deleteMessage(chatId, loadingMessage.message_id);
     
-    Object.values(accounts).forEach((account, index) => {
-      const balance = account.balance ? `${account.balance}` : '0';
-      const currency = account.currency ? account.currency : 'не указана';
-      const type = account.type ? account.type : 'не указан';
+    // Отправляем каждый счет отдельным сообщением
+    const accountList = Object.values(accounts);
+    
+    for (let i = 0; i < accountList.length; i++) {
+      const account = accountList[i];
+      const accountText = formatAccountDetails(account, i + 1, accountList.length);
       
-      responseText += `${index + 1}. ${account.title}\n`;
-      responseText += `   Тип: ${type}\n`;
-      responseText += `   Валюта: ${currency}\n`;
-      responseText += `   Текущий баланс: ${balance}\n`;
-      responseText += `   Накопительный счет: ${account.savings ? 'да' : 'нет'}\n`;
-      responseText += `   Включать в баланс: ${account.inBalance ? 'да' : 'нет'}\n`;
-      responseText += `   Счет по умолчанию: ${account.isDefault ? 'да' : 'нет'}\n`;
-      responseText += `   Архивный счет: ${account.isArchived ? 'да' : 'нет'}\n\n`;
-    });
-    
-    // Если сообщение слишком длинное, разбиваем на части
-    if (responseText.length > 4000) {
-      const chunks = splitMessage(responseText, 4000);
-      for (let i = 0; i < chunks.length; i++) {
-        if (i === 0) {
-          await bot.editMessageText(chunks[i], {
-            chat_id: chatId,
-            message_id: loadingMessage.message_id
-          });
-        } else {
-          await bot.sendMessage(chatId, chunks[i]);
-        }
+      await bot.sendMessage(chatId, accountText);
+      
+      // Небольшая задержка между сообщениями для избежания rate limiting
+      if (i < accountList.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    } else {
-      await bot.editMessageText(responseText, {
-        chat_id: chatId,
-        message_id: loadingMessage.message_id
-      });
     }
     
     console.log(`Отправлен список счетов пользователю ${userName} (${Object.keys(accounts).length} счетов)`);
@@ -200,6 +180,43 @@ async function handleAccountsCommand(chatId, userName) {
       message_id: loadingMessage.message_id
     });
   }
+}
+
+// Функция для форматирования деталей счета
+function formatAccountDetails(account, index, total) {
+  let text = `💳 Счет ${index} из ${total}\n\n`;
+  
+  // Добавляем все поля счета в формате ".. ИмяПараметра: ЗначениеПараметра"
+  const fields = [
+    'id', 'user', 'instrument', 'type', 'role', 'private', 'savings', 
+    'title', 'inBalance', 'creditLimit', 'startBalance', 'balance', 
+    'company', 'archive', 'enableCorrection', 'balanceCorrectionType', 
+    'startDate', 'capitalization', 'percent', 'changed', 'syncID', 
+    'enableSMS', 'endDateOffset', 'endDateOffsetInterval', 'payoffStep', 'payoffInterval'
+  ];
+  
+  fields.forEach(field => {
+    const value = account[field];
+    if (value !== undefined && value !== null) {
+      let displayValue = value;
+      
+      // Специальная обработка для некоторых полей
+      if (field === 'changed' && typeof value === 'number') {
+        displayValue = new Date(value * 1000).toLocaleString('ru-RU');
+      } else if (field === 'balance' || field === 'startBalance' || field === 'creditLimit') {
+        // Форматируем денежные суммы
+        displayValue = `${value} (${(value / 100).toFixed(2)} руб.)`;
+      } else if (typeof value === 'boolean') {
+        displayValue = value ? 'да' : 'нет';
+      } else if (typeof value === 'object') {
+        displayValue = JSON.stringify(value);
+      }
+      
+      text += `.. ${field}: ${displayValue}\n`;
+    }
+  });
+  
+  return text;
 }
 
 // Вспомогательные функции
