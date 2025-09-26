@@ -188,6 +188,29 @@ class SupabaseClient {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Получение настройки по имени параметра
+   */
+  async getSetting(parameterName) {
+    try {
+      const { data, error } = await this.client
+        .from('settings')
+        .select('parameter_value')
+        .eq('parameter_name', parameterName)
+        .single();
+      
+      if (error) {
+        throw error;
+      }
+      
+      return { success: true, value: data?.parameter_value || '' };
+      
+    } catch (error) {
+      console.error(`❌ Ошибка при получении настройки ${parameterName}:`, error.message);
+      return { success: false, error: error.message, value: '' };
+    }
+  }
 }
 
 module.exports = SupabaseClient;

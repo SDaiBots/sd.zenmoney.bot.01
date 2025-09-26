@@ -70,7 +70,7 @@ function handleMessage(message) {
   
   // Обработка обычных сообщений - показываем структуру транзакции
   if (text) {
-    const transactionStructure = createTransactionStructure(text);
+    const transactionStructure = createTransactionStructure(text, 'Бумажник');
     const inlineKeyboard = createTransactionKeyboard();
     
     bot.sendMessage(chatId, transactionStructure, {
@@ -540,11 +540,11 @@ async function handleTagsUpdCommand(chatId, userName) {
 }
 
 // Функция создания структуры транзакции
-function createTransactionStructure(comment) {
+function createTransactionStructure(comment, accountName = 'Бумажник') {
   return `💰 **Структура транзакции:**
 
 📝 **Статья:** Продукты
-💳 **Счет:** Бумажник  
+💳 **Счет:** ${accountName}
 💵 **Сумма:** 500 000 UZS
 💬 **Комментарий:** ${comment}`;
 }
@@ -554,25 +554,33 @@ function createTransactionKeyboard() {
   return [
     [
       {
-        text: '✅ Применить',
+        text: '✅',
         callback_data: 'transaction_apply'
       },
       {
-        text: '❌ Отменить', 
+        text: '❌', 
         callback_data: 'transaction_cancel'
+      },
+      {
+        text: '✏️',
+        callback_data: 'transaction_edit'
       }
     ],
     [
       {
-        text: '✏️ Скорректировать',
-        callback_data: 'transaction_edit'
+        text: '💳 Карта',
+        callback_data: 'transaction_card'
+      },
+      {
+        text: '💵 Наличные',
+        callback_data: 'transaction_cash'
       }
     ]
   ];
 }
 
 // Обработчик callback query
-function handleCallbackQuery(callbackQuery) {
+async function handleCallbackQuery(callbackQuery) {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
   const data = callbackQuery.data;
@@ -591,28 +599,76 @@ function handleCallbackQuery(callbackQuery) {
   // Обработка различных действий
   switch (data) {
     case 'transaction_apply':
-      bot.editMessageText('✅ Транзакция применена!', {
+      bot.editMessageText('транзакция применена', {
         chat_id: chatId,
         message_id: messageId
       });
       break;
       
     case 'transaction_cancel':
-      bot.editMessageText('❌ Транзакция отменена.', {
+      bot.editMessageText('транзакция отменена', {
         chat_id: chatId,
         message_id: messageId
       });
       break;
       
     case 'transaction_edit':
-      bot.editMessageText('✏️ Режим редактирования транзакции.\n\nОтправьте новое сообщение с исправленными данными.', {
+      bot.editMessageText('корректировка', {
         chat_id: chatId,
         message_id: messageId
       });
       break;
       
+    case 'transaction_card':
+      await handleAccountSelection(chatId, messageId, 'default_card', callbackQuery.message.text);
+      break;
+      
+    case 'transaction_cash':
+      await handleAccountSelection(chatId, messageId, 'default_cash', callbackQuery.message.text);
+      break;
+      
     default:
       console.log(`Неизвестный callback data: ${data}`);
+  }
+}
+
+// Функция обработки выбора счета
+async function handleAccountSelection(chatId, messageId, settingName, originalMessage) {
+  try {
+    if (!supabaseClient) {
+      bot.editMessageText('❌ Supabase не настроен', {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      return;
+    }
+    
+    // Получаем значение настройки из Supabase
+    const settingResult = await supabaseClient.getSetting(settingName);
+    const accountName = settingResult.success && settingResult.value ? settingResult.value : 'Бумажник';
+    
+    // Извлекаем комментарий из оригинального сообщения
+    const commentMatch = originalMessage.match(/💬 \*\*Комментарий:\*\* (.+)/);
+    const comment = commentMatch ? commentMatch[1] : 'Комментарий не найден';
+    
+    // Создаем новую структуру транзакции с выбранным счетом
+    const newTransactionStructure = createTransactionStructure(comment, accountName);
+    const inlineKeyboard = createTransactionKeyboard();
+    
+    bot.editMessageText(newTransactionStructure, {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: {
+        inline_keyboard: inlineKeyboard
+      }
+    });
+    
+  } catch (error) {
+    console.error('Ошибка при обработке выбора счета:', error);
+    bot.editMessageText('❌ Ошибка при выборе счета', {
+      chat_id: chatId,
+      message_id: messageId
+    });
   }
 }
 
