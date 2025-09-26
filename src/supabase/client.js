@@ -30,7 +30,7 @@ class SupabaseClient {
       console.log('🔄 Проверяем подключение к Supabase...');
       
       const { data, error } = await this.client
-        .from('accounts')
+        .from('zm_accounts')
         .select('count')
         .limit(1);
       
@@ -48,14 +48,14 @@ class SupabaseClient {
   }
 
   /**
-   * Очистка таблицы accounts
+   * Очистка таблицы zm_accounts
    */
   async clearAccounts() {
     try {
-      console.log('🔄 Очищаем таблицу accounts...');
+      console.log('🔄 Очищаем таблицу zm_accounts...');
       
       const { error } = await this.client
-        .from('accounts')
+        .from('zm_accounts')
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Удаляем все записи
       
@@ -63,24 +63,24 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log('✅ Таблица accounts очищена');
+      console.log('✅ Таблица zm_accounts очищена');
       return { success: true };
       
     } catch (error) {
-      console.error('❌ Ошибка при очистке таблицы accounts:', error.message);
+      console.error('❌ Ошибка при очистке таблицы zm_accounts:', error.message);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * Вставка счетов в таблицу accounts
+   * Вставка счетов в таблицу zm_accounts
    */
   async insertAccounts(accounts) {
     try {
       console.log(`🔄 Вставляем ${accounts.length} счетов в Supabase...`);
       
       const { data, error } = await this.client
-        .from('accounts')
+        .from('zm_accounts')
         .insert(accounts);
       
       if (error) {
@@ -102,7 +102,7 @@ class SupabaseClient {
   async getAllAccounts() {
     try {
       const { data, error } = await this.client
-        .from('accounts')
+        .from('zm_accounts')
         .select('*')
         .order('created_at', { ascending: false });
       

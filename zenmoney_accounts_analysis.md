@@ -56,10 +56,10 @@
 
 ## 🗄️ Схема таблицы Supabase
 
-### Основная таблица `accounts`
+### Основная таблица `zm_accounts`
 
 ```sql
-CREATE TABLE accounts (
+CREATE TABLE zm_accounts (
     -- Основные поля
     id UUID PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -111,11 +111,11 @@ CREATE TABLE accounts (
 ### Индексы
 
 ```sql
-CREATE INDEX idx_accounts_user_id ON accounts(user_id);
-CREATE INDEX idx_accounts_type ON accounts(type);
-CREATE INDEX idx_accounts_instrument_id ON accounts(instrument_id);
-CREATE INDEX idx_accounts_archive ON accounts(archive);
-CREATE INDEX idx_accounts_changed ON accounts(changed);
+CREATE INDEX idx_zm_accounts_user_id ON zm_accounts(user_id);
+CREATE INDEX idx_zm_accounts_type ON zm_accounts(type);
+CREATE INDEX idx_zm_accounts_instrument_id ON zm_accounts(instrument_id);
+CREATE INDEX idx_zm_accounts_archive ON zm_accounts(archive);
+CREATE INDEX idx_zm_accounts_changed ON zm_accounts(changed);
 ```
 
 ## 🔄 Маппинг данных
