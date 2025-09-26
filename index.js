@@ -102,6 +102,9 @@ function handleCommand(message) {
     case '/accounts_upd':
       handleAccountsUpdCommand(chatId, userName);
       break;
+    case '/tags_upd':
+      handleTagsUpdCommand(chatId, userName);
+      break;
     default:
       bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.');
   }
@@ -115,6 +118,7 @@ function handleStartCommand(chatId, userName) {
 /start - приветствие
 /accounts - показать все счета из ZenMoney
 /accounts_upd - обновить счета в Supabase
+/tags_upd - обновить теги в Supabase
 
 Просто отправьте любое сообщение для тестирования!`;
   
@@ -382,6 +386,149 @@ async function handleAccountsUpdCommand(chatId, userName) {
     } else {
       // Если loadingMessage не определена, отправляем новое сообщение
       bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.');
+    }
+  }
+}
+
+// Обработчик команды /tags_upd
+async function handleTagsUpdCommand(chatId, userName) {
+  const zenMoneyToken = process.env.ZENMONEY_TOKEN;
+  
+  if (!zenMoneyToken) {
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    return;
+  }
+  
+  if (!supabaseClient) {
+    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+    return;
+  }
+  
+  // Объявляем loadingMessage вне try-catch для доступа в catch
+  let loadingMessage;
+  
+  try {
+    // Отправляем сообщение о начале процесса
+    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление тегов в Supabase...');
+    
+    // Получаем данные из ZenMoney API
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: currentTimestamp,
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${zenMoneyToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 30000
+    });
+    
+    const data = response.data;
+    const tags = data.tag || {};
+    
+    if (Object.keys(tags).length === 0) {
+      await bot.editMessageText('❌ Теги не найдены в ZenMoney', {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Обновляем статус
+    await bot.editMessageText('🔄 Получены теги из ZenMoney. Очищаем таблицу в Supabase...', {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    // Очищаем таблицу в Supabase
+    const clearResult = await supabaseClient.clearTags();
+    if (!clearResult.success) {
+      await bot.editMessageText(`❌ Ошибка при очистке таблицы: ${clearResult.error}`, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Обновляем статус
+    await bot.editMessageText('🔄 Таблица очищена. Загружаем теги в Supabase...', {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    // Преобразуем теги для Supabase
+    const tagsForSupabase = Object.values(tags).map(tag => {
+      // Безопасная обработка даты changed
+      let changedDate = null;
+      if (tag.changed && typeof tag.changed === 'number' && tag.changed > 0) {
+        try {
+          const date = new Date(tag.changed * 1000);
+          if (!isNaN(date.getTime())) {
+            changedDate = date.toISOString();
+          }
+        } catch (error) {
+          console.warn(`Неверная дата changed для тега ${tag.id}:`, tag.changed);
+        }
+      }
+
+      return {
+        id: tag.id,
+        user_id: tag.user,
+        title: tag.title,
+        parent_id: tag.parent || null,
+        color: tag.color || null,
+        icon: tag.icon || null,
+        picture: tag.picture || null,
+        show_income: tag.showIncome === true,
+        show_outcome: tag.showOutcome !== false,
+        budget_income: tag.budgetIncome === true,
+        budget_outcome: tag.budgetOutcome === true,
+        required: tag.required === true,
+        archive: tag.archive === true,
+        static_id: tag.staticId || null,
+        changed: changedDate
+      };
+    });
+    
+    // Вставляем теги в Supabase
+    const insertResult = await supabaseClient.insertTags(tagsForSupabase);
+    if (!insertResult.success) {
+      await bot.editMessageText(`❌ Ошибка при загрузке тегов: ${insertResult.error}`, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+      return;
+    }
+    
+    // Успешное завершение
+    await bot.editMessageText(`✅ Теги успешно обновлены в Supabase!\n\n📊 Загружено: ${tagsForSupabase.length} тегов`, {
+      chat_id: chatId,
+      message_id: loadingMessage.message_id
+    });
+    
+    console.log(`Теги обновлены в Supabase пользователем ${userName} (${tagsForSupabase.length} тегов)`);
+    
+  } catch (error) {
+    console.error('Ошибка при обновлении тегов:', error);
+    
+    // Проверяем, что loadingMessage существует перед попыткой редактирования
+    if (loadingMessage) {
+      try {
+        await bot.editMessageText('❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.', {
+          chat_id: chatId,
+          message_id: loadingMessage.message_id
+        });
+      } catch (editError) {
+        console.error('Ошибка при редактировании сообщения:', editError);
+        // Если не удалось отредактировать, отправляем новое сообщение
+        bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
+      }
+    } else {
+      // Если loadingMessage не определена, отправляем новое сообщение
+      bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
     }
   }
 }

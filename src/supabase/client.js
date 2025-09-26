@@ -117,6 +117,77 @@ class SupabaseClient {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Очистка таблицы zm_tags
+   */
+  async clearTags() {
+    try {
+      console.log('🔄 Очищаем таблицу zm_tags...');
+      
+      const { error } = await this.client
+        .from('zm_tags')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Удаляем все записи
+      
+      if (error) {
+        throw error;
+      }
+      
+      console.log('✅ Таблица zm_tags очищена');
+      return { success: true };
+      
+    } catch (error) {
+      console.error('❌ Ошибка при очистке таблицы zm_tags:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Вставка тегов в таблицу zm_tags
+   */
+  async insertTags(tags) {
+    try {
+      console.log(`🔄 Вставляем ${tags.length} тегов в Supabase...`);
+      
+      const { data, error } = await this.client
+        .from('zm_tags')
+        .insert(tags);
+      
+      if (error) {
+        throw error;
+      }
+      
+      console.log(`✅ Успешно вставлено ${tags.length} тегов`);
+      return { success: true, data };
+      
+    } catch (error) {
+      console.error('❌ Ошибка при вставке тегов:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение всех тегов из таблицы
+   */
+  async getAllTags() {
+    try {
+      const { data, error } = await this.client
+        .from('zm_tags')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw error;
+      }
+      
+      return { success: true, data };
+      
+    } catch (error) {
+      console.error('❌ Ошибка при получении тегов:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = SupabaseClient;
