@@ -246,9 +246,12 @@ async function handleAccountsUpdCommand(chatId, userName) {
     return;
   }
   
+  // Объявляем loadingMessage вне try-catch для доступа в catch
+  let loadingMessage;
+  
   try {
     // Отправляем сообщение о начале процесса
-    const loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление счетов в Supabase...');
+    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление счетов в Supabase...');
     
     // Получаем данные из ZenMoney API
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -299,34 +302,49 @@ async function handleAccountsUpdCommand(chatId, userName) {
     });
     
     // Преобразуем счета для Supabase
-    const accountsForSupabase = Object.values(accounts).map(account => ({
-      id: account.id,
-      user_id: account.user,
-      instrument_id: account.instrument,
-      type: account.type,
-      title: account.title,
-      balance: account.balance || 0,
-      start_balance: account.startBalance || 0,
-      credit_limit: account.creditLimit || 0,
-      in_balance: account.inBalance !== false,
-      private: account.private === true,
-      savings: account.savings === true,
-      archive: account.archive === true,
-      enable_correction: account.enableCorrection !== false,
-      enable_sms: account.enableSMS === true,
-      balance_correction_type: account.balanceCorrectionType,
-      capitalization: account.capitalization,
-      percent: account.percent,
-      start_date: account.startDate ? new Date(account.startDate * 1000).toISOString().split('T')[0] : null,
-      end_date_offset: account.endDateOffset,
-      end_date_offset_interval: account.endDateOffsetInterval,
-      payoff_step: account.payoffStep,
-      payoff_interval: account.payoffInterval,
-      company_id: account.company,
-      role: account.role,
-      sync_id: account.syncID,
-      changed: account.changed
-    }));
+    const accountsForSupabase = Object.values(accounts).map(account => {
+      // Безопасная обработка даты
+      let startDate = null;
+      if (account.startDate && typeof account.startDate === 'number' && account.startDate > 0) {
+        try {
+          const date = new Date(account.startDate * 1000);
+          if (!isNaN(date.getTime())) {
+            startDate = date.toISOString().split('T')[0];
+          }
+        } catch (error) {
+          console.warn(`Неверная дата startDate для счета ${account.id}:`, account.startDate);
+        }
+      }
+
+      return {
+        id: account.id,
+        user_id: account.user,
+        instrument_id: account.instrument,
+        type: account.type,
+        title: account.title,
+        balance: account.balance || 0,
+        start_balance: account.startBalance || 0,
+        credit_limit: account.creditLimit || 0,
+        in_balance: account.inBalance !== false,
+        private: account.private === true,
+        savings: account.savings === true,
+        archive: account.archive === true,
+        enable_correction: account.enableCorrection !== false,
+        enable_sms: account.enableSMS === true,
+        balance_correction_type: account.balanceCorrectionType,
+        capitalization: account.capitalization,
+        percent: account.percent,
+        start_date: startDate,
+        end_date_offset: account.endDateOffset,
+        end_date_offset_interval: account.endDateOffsetInterval,
+        payoff_step: account.payoffStep,
+        payoff_interval: account.payoffInterval,
+        company_id: account.company,
+        role: account.role,
+        sync_id: account.syncID,
+        changed: account.changed
+      };
+    });
     
     // Вставляем счета в Supabase
     const insertResult = await supabaseClient.insertAccounts(accountsForSupabase);
@@ -348,10 +366,23 @@ async function handleAccountsUpdCommand(chatId, userName) {
     
   } catch (error) {
     console.error('Ошибка при обновлении счетов:', error);
-    await bot.editMessageText('❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.', {
-      chat_id: chatId,
-      message_id: loadingMessage.message_id
-    });
+    
+    // Проверяем, что loadingMessage существует перед попыткой редактирования
+    if (loadingMessage) {
+      try {
+        await bot.editMessageText('❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.', {
+          chat_id: chatId,
+          message_id: loadingMessage.message_id
+        });
+      } catch (editError) {
+        console.error('Ошибка при редактировании сообщения:', editError);
+        // Если не удалось отредактировать, отправляем новое сообщение
+        bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.');
+      }
+    } else {
+      // Если loadingMessage не определена, отправляем новое сообщение
+      bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.');
+    }
   }
 }
 
