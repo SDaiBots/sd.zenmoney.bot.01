@@ -644,6 +644,11 @@ ${structure}`;
   }
 }
 
+// Функция экранирования для MarkdownV2
+function escapeMarkdownV2(text) {
+  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+}
+
 // Функция обработки отмены транзакции
 async function handleTransactionCancel(chatId, messageId, originalMessage) {
   try {
@@ -651,9 +656,9 @@ async function handleTransactionCancel(chatId, messageId, originalMessage) {
     const structureMatch = originalMessage.match(/Новая запись:(.+)/s);
     const structure = structureMatch ? structureMatch[1].trim() : originalMessage;
     
-    // Добавляем зачеркивание ко всем строкам структуры
+    // Добавляем зачеркивание ко всем строкам структуры и экранируем
     const strikethroughStructure = structure.split('\n').map(line => 
-      line.trim() ? `~${line.trim()}~` : line
+      line.trim() ? `~~${escapeMarkdownV2(line.trim())}~~` : line
     ).join('\n');
     
     // Формируем новое сообщение
@@ -665,7 +670,7 @@ ${strikethroughStructure}`;
     bot.editMessageText(newMessage, {
       chat_id: chatId,
       message_id: messageId,
-      parse_mode: 'Markdown'
+      parse_mode: 'MarkdownV2'
     });
     
   } catch (error) {
