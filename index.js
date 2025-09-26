@@ -541,12 +541,12 @@ async function handleTagsUpdCommand(chatId, userName) {
 
 // Функция создания структуры транзакции
 function createTransactionStructure(comment, accountName = 'Бумажник') {
-  return `💰 **Структура транзакции:**
+  return `Новая запись:
 
-📝 *Статья:* Продукты
-💳 *Счет:* ${accountName}
-💵 *Сумма:* 500 000 UZS
-💬 *Комментарий:* ${comment}`;
+🛍️ Продукты
+👛 ${accountName}
+💲 500 000 UZS
+💬 ${comment}`;
 }
 
 // Функция создания инлайн клавиатуры
@@ -597,15 +597,15 @@ async function handleCallbackQuery(callbackQuery) {
   // Обработка различных действий
   switch (data) {
     case 'transaction_apply':
-      bot.sendMessage(chatId, 'транзакция применена');
+      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'применена');
       break;
       
     case 'transaction_cancel':
-      bot.sendMessage(chatId, 'транзакция отменена');
+      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'отменена');
       break;
       
     case 'transaction_edit':
-      bot.sendMessage(chatId, 'корректировка');
+      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'скорректирована');
       break;
       
     case 'transaction_card':
@@ -618,6 +618,25 @@ async function handleCallbackQuery(callbackQuery) {
       
     default:
       console.log(`Неизвестный callback data: ${data}`);
+  }
+}
+
+// Функция обновления сообщения транзакции с результатом
+async function updateTransactionMessage(chatId, messageId, originalMessage, result) {
+  try {
+    // Добавляем пустую строку и результат к оригинальному сообщению
+    const updatedMessage = `${originalMessage}
+
+транзакция ${result}`;
+    
+    // Обновляем сообщение без кнопок
+    bot.editMessageText(updatedMessage, {
+      chat_id: chatId,
+      message_id: messageId
+    });
+    
+  } catch (error) {
+    console.error('Ошибка при обновлении сообщения транзакции:', error);
   }
 }
 
