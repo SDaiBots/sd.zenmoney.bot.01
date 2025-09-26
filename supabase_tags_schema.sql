@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS zm_tags (
     parent_id UUID REFERENCES zm_tags(id), -- ID родительского тега (для иерархии)
     
     -- Визуальные настройки
-    color INTEGER,                          -- Цвет тега (числовое представление)
+    color BIGINT,                           -- Цвет тега (числовое представление)
     icon TEXT,                              -- Иконка тега
     picture TEXT,                           -- Изображение тега (может быть null)
     
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS zm_tags (
     
     -- Индексы для оптимизации
     CONSTRAINT unique_zm_tag_id UNIQUE (id),
-    CONSTRAINT valid_color CHECK (color >= 0 AND color <= 4294967295)
+    CONSTRAINT valid_color CHECK (color >= 0 AND color <= 18446744073709551615)
 );
 
 -- Создание индексов для оптимизации запросов
@@ -65,7 +65,7 @@ COMMENT ON COLUMN zm_tags.id IS 'Уникальный идентификатор
 COMMENT ON COLUMN zm_tags.user_id IS 'ID пользователя ZenMoney';
 COMMENT ON COLUMN zm_tags.title IS 'Название тега/статьи';
 COMMENT ON COLUMN zm_tags.parent_id IS 'ID родительского тега для создания иерархии';
-COMMENT ON COLUMN zm_tags.color IS 'Цвет тега в числовом формате (ARGB)';
+COMMENT ON COLUMN zm_tags.color IS 'Цвет тега в числовом формате (ARGB, BIGINT для больших значений)';
 COMMENT ON COLUMN zm_tags.icon IS 'Иконка тега (например: "2007_controller")';
 COMMENT ON COLUMN zm_tags.picture IS 'Изображение тега (может быть null)';
 COMMENT ON COLUMN zm_tags.show_income IS 'Показывать тег в разделе доходов';
