@@ -597,15 +597,15 @@ async function handleCallbackQuery(callbackQuery) {
   // Обработка различных действий
   switch (data) {
     case 'transaction_apply':
-      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'применена');
+      await handleTransactionApply(chatId, messageId, callbackQuery.message.text);
       break;
       
     case 'transaction_cancel':
-      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'отменена');
+      await handleTransactionCancel(chatId, messageId, callbackQuery.message.text);
       break;
       
     case 'transaction_edit':
-      await updateTransactionMessage(chatId, messageId, callbackQuery.message.text, 'скорректирована');
+      await handleTransactionEdit(chatId, messageId);
       break;
       
     case 'transaction_card':
@@ -621,22 +621,66 @@ async function handleCallbackQuery(callbackQuery) {
   }
 }
 
-// Функция обновления сообщения транзакции с результатом
-async function updateTransactionMessage(chatId, messageId, originalMessage, result) {
+// Функция обработки применения транзакции
+async function handleTransactionApply(chatId, messageId, originalMessage) {
   try {
-    // Добавляем пустую строку и результат к оригинальному сообщению
-    const updatedMessage = `${originalMessage}
+    // Извлекаем структуру записи из оригинального сообщения
+    const structureMatch = originalMessage.match(/Новая запись:(.+)/s);
+    const structure = structureMatch ? structureMatch[1].trim() : originalMessage;
+    
+    // Формируем новое сообщение
+    const newMessage = `✅ Запись добавлена
 
-транзакция ${result}`;
+${structure}`;
     
     // Обновляем сообщение без кнопок
-    bot.editMessageText(updatedMessage, {
+    bot.editMessageText(newMessage, {
       chat_id: chatId,
       message_id: messageId
     });
     
   } catch (error) {
-    console.error('Ошибка при обновлении сообщения транзакции:', error);
+    console.error('Ошибка при применении транзакции:', error);
+  }
+}
+
+// Функция обработки отмены транзакции
+async function handleTransactionCancel(chatId, messageId, originalMessage) {
+  try {
+    // Извлекаем структуру записи из оригинального сообщения
+    const structureMatch = originalMessage.match(/Новая запись:(.+)/s);
+    const structure = structureMatch ? structureMatch[1].trim() : originalMessage;
+    
+    // Добавляем зачеркивание ко всем строкам структуры
+    const strikethroughStructure = structure.split('\n').map(line => 
+      line.trim() ? `~${line.trim()}~` : line
+    ).join('\n');
+    
+    // Формируем новое сообщение
+    const newMessage = `❌ Запись отменена
+
+${strikethroughStructure}`;
+    
+    // Обновляем сообщение без кнопок
+    bot.editMessageText(newMessage, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown'
+    });
+    
+  } catch (error) {
+    console.error('Ошибка при отмене транзакции:', error);
+  }
+}
+
+// Функция обработки корректировки транзакции
+async function handleTransactionEdit(chatId, messageId) {
+  try {
+    // Удаляем сообщение
+    bot.deleteMessage(chatId, messageId);
+    
+  } catch (error) {
+    console.error('Ошибка при удалении сообщения:', error);
   }
 }
 
