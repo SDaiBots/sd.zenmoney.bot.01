@@ -543,16 +543,24 @@ async function handleTagsUpdCommand(chatId, userName) {
 function createTransactionStructure(comment, accountName = 'Бумажник') {
   return `💰 **Структура транзакции:**
 
-📝 **Статья:** Продукты
-💳 **Счет:** ${accountName}
-💵 **Сумма:** 500 000 UZS
-💬 **Комментарий:** ${comment}`;
+📝 *Статья:* Продукты
+💳 *Счет:* ${accountName}
+💵 *Сумма:* 500 000 UZS
+💬 *Комментарий:* ${comment}`;
 }
 
 // Функция создания инлайн клавиатуры
 function createTransactionKeyboard() {
   return [
     [
+      {
+        text: '💳',
+        callback_data: 'transaction_card'
+      },
+      {
+        text: '💵',
+        callback_data: 'transaction_cash'
+      },
       {
         text: '✅',
         callback_data: 'transaction_apply'
@@ -564,16 +572,6 @@ function createTransactionKeyboard() {
       {
         text: '✏️',
         callback_data: 'transaction_edit'
-      }
-    ],
-    [
-      {
-        text: '💳 Карта',
-        callback_data: 'transaction_card'
-      },
-      {
-        text: '💵 Наличные',
-        callback_data: 'transaction_cash'
       }
     ]
   ];
@@ -599,24 +597,15 @@ async function handleCallbackQuery(callbackQuery) {
   // Обработка различных действий
   switch (data) {
     case 'transaction_apply':
-      bot.editMessageText('транзакция применена', {
-        chat_id: chatId,
-        message_id: messageId
-      });
+      bot.sendMessage(chatId, 'транзакция применена');
       break;
       
     case 'transaction_cancel':
-      bot.editMessageText('транзакция отменена', {
-        chat_id: chatId,
-        message_id: messageId
-      });
+      bot.sendMessage(chatId, 'транзакция отменена');
       break;
       
     case 'transaction_edit':
-      bot.editMessageText('корректировка', {
-        chat_id: chatId,
-        message_id: messageId
-      });
+      bot.sendMessage(chatId, 'корректировка');
       break;
       
     case 'transaction_card':
