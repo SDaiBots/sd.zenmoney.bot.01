@@ -1,0 +1,143 @@
+{
+  "success": true,
+  "timestamp": "2024-09-26T23:05:00Z",
+  "statistics": {
+    "accounts": 40,
+    "tags": 91,
+    "transactions": 1880,
+    "instruments": 5
+  },
+  "accounts": [
+    {
+      "id": 0,
+      "title": "Долги",
+      "type": "debt",
+      "currency": null,
+      "balance": 8960.73
+    },
+    {
+      "id": 1,
+      "title": "BA TNB RUB 99 XX Premium",
+      "type": "checking",
+      "currency": null,
+      "balance": 0
+    },
+    {
+      "id": 2,
+      "title": "DC HMR UZS 01",
+      "type": "ccard",
+      "currency": null,
+      "balance": 0
+    },
+    {
+      "id": 3,
+      "title": "BA KPB EUR 01",
+      "type": "checking",
+      "currency": null,
+      "balance": 0
+    },
+    {
+      "id": 4,
+      "title": "BA TBN USD 01",
+      "type": "ccard",
+      "currency": null,
+      "balance": 0
+    }
+  ],
+  "tags": [
+    {
+      "id": 0,
+      "title": "Видео игры",
+      "color": 4287730330
+    },
+    {
+      "id": 1,
+      "title": "Кафе, рестораны",
+      "color": 4280858358
+    },
+    {
+      "id": 2,
+      "title": "Хранение вещей",
+      "color": 4280858358
+    },
+    {
+      "id": 3,
+      "title": "501 Личные проекты",
+      "color": 4285714806
+    },
+    {
+      "id": 4,
+      "title": "PMCulture",
+      "color": 4285714806
+    },
+    {
+      "id": 5,
+      "title": "Аренда транспорта",
+      "color": 4294675712
+    },
+    {
+      "id": 6,
+      "title": "Хобби",
+      "color": 4280858358
+    },
+    {
+      "id": 7,
+      "title": "Медиа контент",
+      "color": 4287730330
+    },
+    {
+      "id": 8,
+      "title": "Консультирование",
+      "color": 4285714806
+    },
+    {
+      "id": 9,
+      "title": "801 Не учитываемые",
+      "color": 4287730330
+    }
+  ],
+  "instruments": [
+    {
+      "id": 10548,
+      "title": "Российский рубль",
+      "shortTitle": "RUB",
+      "symbol": "₽"
+    },
+    {
+      "id": 11519,
+      "title": "Узбекский сум",
+      "shortTitle": "UZS",
+      "symbol": "сўм"
+    },
+    {
+      "id": 11902,
+      "title": "Евро",
+      "shortTitle": "EUR",
+      "symbol": "€"
+    }
+  ],
+  "sample_transactions": [
+    {
+      "id": "c60ba341-c35c-496b-90fe-8ed7b11a0ca1",
+      "date": "2025-03-18",
+      "income": 0,
+      "outcome": 600,
+      "comment": "Дара",
+      "tags": ["5451fc9a-11d7-4224-8e1d-7c659de9252e"]
+    },
+    {
+      "id": "8c44ee8c-db14-4506-a830-0bafe27dc97f",
+      "date": "2025-03-19",
+      "income": 0,
+      "outcome": 500,
+      "comment": "Фалафель",
+      "tags": ["5451fc9a-11d7-4224-8e1d-7c659de9252e"]
+    }
+  ],
+  "api_info": {
+    "endpoint": "POST /v8/diff",
+    "authentication": "Bearer token",
+    "response_size": "1.7MB",
+    "last_sync": "2024-09-26T23:05:00Z"
+  }
+}
