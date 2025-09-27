@@ -168,23 +168,39 @@ class SupabaseClient {
   }
 
   /**
-   * Получение всех тегов из таблицы
+   * Получение всех тегов с информацией о родительских тегах
    */
-  async getAllTags() {
+  async getAllTagsWithParents() {
     try {
       const { data, error } = await this.client
         .from('zm_tags')
-        .select('*')
+        .select(`
+          *,
+          parent_tag:parent_id (
+            id,
+            title,
+            color,
+            icon
+          )
+        `)
         .order('created_at', { ascending: false });
       
       if (error) {
         throw error;
       }
       
-      return { success: true, data };
+      // Преобразуем данные для удобства использования
+      const tagsWithParents = data.map(tag => ({
+        ...tag,
+        parent_title: tag.parent_tag?.title || null,
+        parent_color: tag.parent_tag?.color || null,
+        parent_icon: tag.parent_tag?.icon || null
+      }));
+      
+      return { success: true, data: tagsWithParents };
       
     } catch (error) {
-      console.error('❌ Ошибка при получении тегов:', error.message);
+      console.error('❌ Ошибка при получении тегов с родителями:', error.message);
       return { success: false, error: error.message };
     }
   }

@@ -34,8 +34,8 @@ async function analyzeMessageWithAI(message, supabaseClient) {
       };
     }
     
-    // 3. Получение доступных тегов
-    const tagsResult = await supabaseClient.getAllTags();
+    // 3. Получение доступных тегов с информацией о родителях (только дочерние теги)
+    const tagsResult = await supabaseClient.getAllTagsWithParents();
     if (!tagsResult.success || !tagsResult.data || tagsResult.data.length === 0) {
       console.log('⚠️ Теги не найдены в базе данных');
       return {
@@ -46,8 +46,19 @@ async function analyzeMessageWithAI(message, supabaseClient) {
       };
     }
     
-    const availableTags = tagsResult.data;
-    console.log(`📊 Найдено ${availableTags.length} доступных тегов`);
+    // Фильтруем только дочерние теги (с parent_id не null)
+    const availableTags = tagsResult.data.filter(tag => tag.parent_id !== null);
+    console.log(`📊 Найдено ${availableTags.length} дочерних тегов из ${tagsResult.data.length} общих тегов`);
+    
+    if (availableTags.length === 0) {
+      console.log('⚠️ Дочерние теги не найдены в базе данных');
+      return {
+        success: false,
+        error: 'Дочерние теги не найдены',
+        tag: null,
+        confidence: 0
+      };
+    }
     
     // 4. Создание клиента ИИ и анализ сообщения
     const aiClient = new AIClient(aiSettings);
@@ -154,14 +165,28 @@ async function testAIFunctionality(supabaseClient) {
       };
     }
     
+    // Получаем реальные дочерние теги с информацией о родителях для тестирования
+    const tagsResult = await supabaseClient.getAllTagsWithParents();
+    if (!tagsResult.success || !tagsResult.data || tagsResult.data.length === 0) {
+      return {
+        success: false,
+        error: 'Теги не найдены в базе данных для тестирования'
+      };
+    }
+    
+    // Фильтруем только дочерние теги (с parent_id не null)
+    const availableTags = tagsResult.data.filter(tag => tag.parent_id !== null);
+    
+    if (availableTags.length === 0) {
+      return {
+        success: false,
+        error: 'Дочерние теги не найдены для тестирования'
+      };
+    }
+    
     // Тестируем анализ простого сообщения
     const testMessage = 'купил хлеб в магазине';
-    const testTags = [
-      { title: 'Продукты', description: 'Покупка продуктов питания' },
-      { title: 'Транспорт', description: 'Расходы на транспорт' }
-    ];
-    
-    const analysisResult = await aiClient.analyzeMessage(testMessage, testTags);
+    const analysisResult = await aiClient.analyzeMessage(testMessage, availableTags);
     
     return {
       success: true,
