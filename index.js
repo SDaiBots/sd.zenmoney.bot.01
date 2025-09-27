@@ -32,6 +32,9 @@ app.use(express.json());
 // Счетчик сообщений для каждого пользователя
 const messageCounters = new Map();
 
+// Хранилище исходных тегов от ИИ для каждого сообщения
+const aiTagsStorage = new Map();
+
 // Обработчик входящих сообщений от Telegram
 app.post('/webhook', (req, res) => {
   try {
@@ -109,8 +112,8 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
       throw new Error(unifiedResult.error);
     }
     
-    // Создаем клавиатуру
-    const keyboard = createUnifiedTransactionKeyboard(unifiedResult.transactionData, unifiedResult.hasMultipleTags);
+    // Создаем клавиатуру с тегами от ИИ
+    const keyboard = createUnifiedTransactionKeyboard(unifiedResult.transactionData, unifiedResult.hasMultipleTags, unifiedResult.aiTags);
     
     // Отправляем единое сообщение
     const message = await bot.sendMessage(chatId, unifiedResult.messageText, {
@@ -121,8 +124,11 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
     
     console.log(`✅ Отправлено единое сообщение транзакции пользователю ${fullUserName} (ID: ${user.id})`);
     
-    // Сохраняем данные транзакции в сообщении для последующего использования
-    // Можно добавить в базу данных или использовать другой механизм
+    // Сохраняем исходные теги от ИИ для этого сообщения
+    const messageKey = `${chatId}_${message.message_id}`;
+    aiTagsStorage.set(messageKey, unifiedResult.aiTags);
+    
+    console.log(`💾 Сохранены исходные теги от ИИ для сообщения ${messageKey}:`, unifiedResult.aiTags.map(t => t.title));
     
   } catch (error) {
     console.error('❌ Ошибка при обработке транзакции с ИИ:', error.message);
@@ -1199,15 +1205,23 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     // Обновляем сообщение с новым счетом
     const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
     
-    // Получаем текущие данные транзакции для пересоздания клавиатуры
-    // Получаем все доступные теги для создания кнопок
-    const tagsResult = await supabaseClient.getAllTagsWithParents();
-    const availableTags = tagsResult.success && tagsResult.data ? tagsResult.data.filter(tag => tag.parent_id !== null) : [];
+    // Получаем исходные теги от ИИ из хранилища
+    const messageKey = `${chatId}_${messageId}`;
+    const originalAiTags = aiTagsStorage.get(messageKey) || [];
+    
+    console.log(`🔍 Получены исходные теги от ИИ для сообщения ${messageKey}:`, originalAiTags.map(t => t.title));
+    
+    // Используем исходные теги от ИИ, если они есть, иначе получаем из базы данных
+    let availableTags = originalAiTags;
+    if (availableTags.length === 0) {
+      const tagsResult = await supabaseClient.getAllTagsWithParents();
+      availableTags = tagsResult.success && tagsResult.data ? tagsResult.data.filter(tag => tag.parent_id !== null) : [];
+    }
     
     const keyboard = [];
     
-    // Добавляем кнопки тегов, если есть несколько вариантов
-    if (availableTags.length > 1) {
+    // Добавляем кнопки тегов, если есть теги от ИИ
+    if (availableTags.length > 0) {
       const tagButtons = [];
       // Берем максимум 3 тега для кнопок
       const tagsForButtons = availableTags.slice(0, 3);
@@ -1278,16 +1292,21 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
     // Обновляем сообщение с новым тегом
     const updatedMessage = updateMessageWithNewTag(originalMessage, selectedTag.title);
     
-    // Получаем все доступные теги для создания кнопок
-    const availableTags = tagsResult.data.filter(tag => tag.parent_id !== null);
+    // Получаем исходные теги от ИИ из хранилища
+    const messageKey = `${chatId}_${messageId}`;
+    const originalAiTags = aiTagsStorage.get(messageKey) || [];
     
-    // Создаем клавиатуру с кнопками тегов (если есть несколько вариантов)
+    console.log(`🔍 Получены исходные теги от ИИ для сообщения ${messageKey}:`, originalAiTags.map(t => t.title));
+    
+    // Используем исходные теги от ИИ, если они есть, иначе получаем из базы данных
+    const availableTags = originalAiTags.length > 0 ? originalAiTags : tagsResult.data.filter(tag => tag.parent_id !== null);
+    
+    // Создаем клавиатуру с кнопками тегов
     const keyboard = [];
     
-    // Добавляем кнопки тегов, если есть несколько вариантов
-    if (availableTags.length > 1) {
+    // Добавляем кнопки тегов, если есть теги от ИИ
+    if (availableTags.length > 0) {
       const tagButtons = [];
-      // Берем максимум 3 тега для кнопок
       const tagsForButtons = availableTags.slice(0, 3);
       
       for (const tag of tagsForButtons) {

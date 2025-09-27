@@ -98,7 +98,8 @@ function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}) {
       success: true,
       messageText,
       transactionData,
-      hasMultipleTags: additionalTags.length > 0
+      hasMultipleTags: additionalTags.length > 0,
+      aiTags: aiResult && aiResult.tags ? aiResult.tags : []
     };
     
   } catch (error) {
@@ -116,19 +117,20 @@ function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}) {
  * Создает инлайн клавиатуру для единого сообщения транзакции
  * @param {Object} transactionData - Данные транзакции
  * @param {boolean} hasMultipleTags - Есть ли дополнительные теги
+ * @param {Array} aiTags - Исходные теги от ИИ (для сохранения в кнопках)
  * @returns {Array} - Массив кнопок для инлайн клавиатуры
  */
-function createUnifiedTransactionKeyboard(transactionData, hasMultipleTags) {
+function createUnifiedTransactionKeyboard(transactionData, hasMultipleTags, aiTags = []) {
   try {
     const keyboard = [];
     
-    // Если есть дополнительные теги, добавляем их как инлайн кнопки
-    if (hasMultipleTags && transactionData.additionalTags.length > 0) {
+    // Если есть теги от ИИ, добавляем их как инлайн кнопки
+    if (aiTags && aiTags.length > 0) {
       const tagButtons = [];
       
-      // Создаем кнопки для дополнительных тегов (максимум 3 в ряду)
-      for (let i = 0; i < Math.min(transactionData.additionalTags.length, 3); i++) {
-        const tag = transactionData.additionalTags[i];
+      // Создаем кнопки для всех тегов от ИИ (максимум 3 в ряду)
+      for (let i = 0; i < Math.min(aiTags.length, 3); i++) {
+        const tag = aiTags[i];
         tagButtons.push({
           text: tag.title,
           callback_data: `unified_tag_${tag.id}`
