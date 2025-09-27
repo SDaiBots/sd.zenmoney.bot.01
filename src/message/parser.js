@@ -203,16 +203,33 @@ function getDefaultAccountName(accountType, settings = {}) {
  * Получает валюту по умолчанию для счета
  * @param {string} accountName - Название счета
  * @param {Object} settings - Настройки из Supabase
- * @returns {string} - Валюта
+ * @param {Object} supabaseClient - Клиент Supabase для получения информации о счете
+ * @returns {Promise<string>} - Валюта
  */
-function getDefaultCurrencyForAccount(accountName, settings = {}) {
+async function getDefaultCurrencyForAccount(accountName, settings = {}, supabaseClient = null) {
   try {
     // Если в настройках есть валюта по умолчанию, используем её
     if (settings.default_currency) {
       return settings.default_currency;
     }
     
-    // Иначе определяем по названию счета
+    // Если есть клиент Supabase, пытаемся получить реальную валюту счета
+    if (supabaseClient) {
+      try {
+        const accountResult = await supabaseClient.getAccountByName(accountName);
+        if (accountResult.success && accountResult.data) {
+          const currencyResult = await supabaseClient.getCurrencyByInstrumentId(accountResult.data.instrument_id);
+          if (currencyResult.success) {
+            console.log(`💱 Найдена валюта счета ${accountName}: ${currencyResult.currency}`);
+            return currencyResult.currency;
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Не удалось получить валюту счета ${accountName}:`, error.message);
+      }
+    }
+    
+    // Fallback: определяем по названию счета
     const lowerAccountName = accountName.toLowerCase();
     
     if (lowerAccountName.includes('uzs') || lowerAccountName.includes('сом')) {

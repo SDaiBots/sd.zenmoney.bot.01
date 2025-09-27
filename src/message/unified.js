@@ -15,9 +15,10 @@ const {
  * @param {string} userMessage - Сообщение пользователя
  * @param {Object} aiResult - Результат ИИ-анализа тегов
  * @param {Object} settings - Настройки из Supabase
+ * @param {Object} supabaseClient - Клиент Supabase для получения информации о счетах
  * @returns {Object} - Объект с текстом сообщения и данными транзакции
  */
-function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}) {
+async function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}, supabaseClient = null) {
   try {
     console.log('📝 Создаем единое сообщение транзакции...');
     
@@ -36,7 +37,7 @@ function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}) {
     // 4. Определяем валюту
     let currency = amountData.currency;
     if (!currency) {
-      currency = getDefaultCurrencyForAccount(accountName, settings);
+      currency = await getDefaultCurrencyForAccount(accountName, settings, supabaseClient);
       console.log(`💱 Валюта по умолчанию: ${currency}`);
     }
     
@@ -226,9 +227,80 @@ function updateMessageWithNewAccount(currentMessageText, newAccountName) {
   }
 }
 
+/**
+ * Обновляет сообщение с новой валютой
+ * @param {string} currentMessageText - Текущий текст сообщения
+ * @param {string} newCurrency - Новая валюта
+ * @returns {string} - Обновленный текст сообщения
+ */
+function updateMessageWithNewCurrency(currentMessageText, newCurrency) {
+  try {
+    console.log(`🔄 Обновляем валюту в сообщении: "${newCurrency}"`);
+    console.log(`📝 Исходное сообщение:`, currentMessageText);
+    
+    // Извлекаем текущую сумму из сообщения
+    const amountMatch = currentMessageText.match(/💲 (.+)/);
+    if (amountMatch) {
+      const currentAmountText = amountMatch[1];
+      // Извлекаем только число из текущей суммы
+      const amountMatch2 = currentAmountText.match(/([\d\s,]+)/);
+      if (amountMatch2) {
+        const amount = amountMatch2[1].trim();
+        const newAmountText = `${amount} ${newCurrency}`;
+        
+        // Заменяем сумму с валютой в сообщении
+        const updatedMessage = currentMessageText.replace(
+          /💲 .+/,
+          `💲 ${newAmountText}`
+        );
+        
+        console.log(`📝 Обновленное сообщение:`, updatedMessage);
+        console.log(`✅ Валюта обновлена: ${updatedMessage !== currentMessageText ? 'ДА' : 'НЕТ'}`);
+        
+        return updatedMessage;
+      }
+    }
+    
+    console.log(`⚠️ Не удалось найти сумму для обновления валюты`);
+    return currentMessageText;
+    
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении валюты в сообщении:', error.message);
+    return currentMessageText;
+  }
+}
+
+/**
+ * Обновляет сообщение с новым счетом и валютой
+ * @param {string} currentMessageText - Текущий текст сообщения
+ * @param {string} newAccountName - Новое название счета
+ * @param {string} newCurrency - Новая валюта
+ * @returns {string} - Обновленный текст сообщения
+ */
+function updateMessageWithNewAccountAndCurrency(currentMessageText, newAccountName, newCurrency) {
+  try {
+    console.log(`🔄 Обновляем счет и валюту в сообщении: "${newAccountName}" / "${newCurrency}"`);
+    
+    // Сначала обновляем счет
+    let updatedMessage = updateMessageWithNewAccount(currentMessageText, newAccountName);
+    
+    // Затем обновляем валюту
+    updatedMessage = updateMessageWithNewCurrency(updatedMessage, newCurrency);
+    
+    console.log(`✅ Счет и валюта обновлены`);
+    return updatedMessage;
+    
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении счета и валюты в сообщении:', error.message);
+    return currentMessageText;
+  }
+}
+
 module.exports = {
   createUnifiedTransactionMessage,
   createUnifiedTransactionKeyboard,
   updateMessageWithNewTag,
-  updateMessageWithNewAccount
+  updateMessageWithNewAccount,
+  updateMessageWithNewCurrency,
+  updateMessageWithNewAccountAndCurrency
 };

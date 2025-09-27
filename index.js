@@ -3,7 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const SupabaseClient = require('./src/supabase/client');
 const { analyzeMessageWithAI } = require('./src/ai/analyzer');
-const { createUnifiedTransactionMessage, createUnifiedTransactionKeyboard, updateMessageWithNewTag, updateMessageWithNewAccount } = require('./src/message/unified');
+const { createUnifiedTransactionMessage, createUnifiedTransactionKeyboard, updateMessageWithNewTag, updateMessageWithNewAccount, updateMessageWithNewCurrency, updateMessageWithNewAccountAndCurrency } = require('./src/message/unified');
 require('dotenv').config();
 
 const app = express();
@@ -114,7 +114,7 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
     const aiResult = await analyzeMessageWithAI(text, supabaseClient);
     
     // Создаем единое сообщение транзакции
-    const unifiedResult = createUnifiedTransactionMessage(text, aiResult, settings);
+    const unifiedResult = await createUnifiedTransactionMessage(text, aiResult, settings, supabaseClient);
     
     if (!unifiedResult.success) {
       throw new Error(unifiedResult.error);
@@ -1268,9 +1268,22 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     
     console.log(`🏦 Определено название счета: ${accountName}`);
     
-    // Обновляем сообщение с новым счетом
-    console.log(`📝 Обновляем сообщение с новым счетом: ${accountName}`);
-    const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
+    // Получаем валюту для нового счета
+    console.log(`💱 Получаем валюту для счета: ${accountName}`);
+    const currencyResult = await supabaseClient.getAccountByName(accountName);
+    let newCurrency = 'RUB'; // По умолчанию
+    
+    if (currencyResult.success && currencyResult.data) {
+      const currencyData = await supabaseClient.getCurrencyByInstrumentId(currencyResult.data.instrument_id);
+      if (currencyData.success) {
+        newCurrency = currencyData.currency;
+        console.log(`💱 Найдена валюта для счета ${accountName}: ${newCurrency}`);
+      }
+    }
+    
+    // Обновляем сообщение с новым счетом и валютой
+    console.log(`📝 Обновляем сообщение с новым счетом и валютой: ${accountName} / ${newCurrency}`);
+    const updatedMessage = updateMessageWithNewAccountAndCurrency(originalMessage, accountName, newCurrency);
     console.log(`📝 Результат обновления сообщения:`, updatedMessage);
     
     // Получаем исходные теги от ИИ из хранилища

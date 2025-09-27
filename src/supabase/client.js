@@ -411,6 +411,78 @@ class SupabaseClient {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Получение счета по названию
+   */
+  async getAccountByName(accountName) {
+    try {
+      console.log(`🔍 Ищем счет по названию: ${accountName}`);
+      
+      const { data, error } = await this.client
+        .from('zm_accounts')
+        .select('*')
+        .eq('title', accountName)
+        .eq('archive', false)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+      
+      console.log(`📋 Найден счет:`, data ? `${data.title} (${data.instrument_id})` : 'не найден');
+      
+      return { 
+        success: true, 
+        data: data || null,
+        exists: !!data
+      };
+      
+    } catch (error) {
+      console.error(`❌ Ошибка при поиске счета ${accountName}:`, error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        data: null,
+        exists: false
+      };
+    }
+  }
+
+  /**
+   * Получение валюты по instrument_id
+   * Пока что возвращаем валюту по умолчанию, так как таблицы instruments нет
+   */
+  async getCurrencyByInstrumentId(instrumentId) {
+    try {
+      console.log(`🔍 Получаем валюту по instrument_id: ${instrumentId}`);
+      
+      // Пока что используем статический маппинг, так как таблицы instruments нет
+      const currencyMap = {
+        10548: 'RUB',  // Российский рубль
+        11519: 'UZS',  // Узбекский сум  
+        11902: 'EUR',  // Евро
+        11903: 'USD',  // Доллар США (предполагаем)
+        11904: 'KZT'   // Казахстанский тенге (предполагаем)
+      };
+      
+      const currency = currencyMap[instrumentId] || 'RUB';
+      console.log(`💱 Валюта для instrument_id ${instrumentId}: ${currency}`);
+      
+      return { 
+        success: true, 
+        currency: currency
+      };
+      
+    } catch (error) {
+      console.error(`❌ Ошибка при получении валюты для instrument_id ${instrumentId}:`, error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        currency: 'RUB'
+      };
+    }
+  }
 }
 
 module.exports = SupabaseClient;
