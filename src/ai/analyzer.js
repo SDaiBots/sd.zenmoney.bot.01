@@ -69,17 +69,21 @@ async function analyzeMessageWithAI(message, supabaseClient) {
       return analysisResult;
     }
     
-    // 5. Поиск точного совпадения тега
-    let matchedTag = null;
-    if (analysisResult.tag) {
-      matchedTag = findExactTagMatch(analysisResult.tag, availableTags);
-    }
+    // 5. Обработка результатов анализа
+    const matchedTags = analysisResult.tags || [];
     
-    console.log(`✅ ИИ анализ завершен. Найденный тег: ${matchedTag?.title || 'Не найден'}`);
+    console.log(`✅ ИИ анализ завершен. Найдено тегов: ${matchedTags.length}`);
+    if (matchedTags.length > 0) {
+      console.log(`🎯 Основной тег: ${matchedTags[0].title}`);
+      if (matchedTags.length > 1) {
+        console.log(`📋 Дополнительные варианты: ${matchedTags.slice(1).map(t => t.title).join(', ')}`);
+      }
+    }
     
     return {
       success: true,
-      tag: matchedTag,
+      tags: matchedTags,
+      primaryTag: matchedTags.length > 0 ? matchedTags[0] : null,
       confidence: analysisResult.confidence,
       rawResponse: analysisResult.rawResponse,
       aiSettings: {
@@ -93,7 +97,8 @@ async function analyzeMessageWithAI(message, supabaseClient) {
     return {
       success: false,
       error: error.message,
-      tag: null,
+      tags: [],
+      primaryTag: null,
       confidence: 0
     };
   }

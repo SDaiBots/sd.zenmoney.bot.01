@@ -95,13 +95,13 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
     // Затем запускаем ИИ-анализ асинхронно
     analyzeMessageWithAI(text, supabaseClient)
       .then(async (aiResult) => {
-        if (aiResult.success && aiResult.tag) {
-          console.log(`🎯 ИИ определил тег: ${aiResult.tag.title}`);
+        if (aiResult.success && aiResult.tags && aiResult.tags.length > 0) {
+          console.log(`🎯 ИИ определил ${aiResult.tags.length} тегов`);
           
           // Отправляем результат ИИ-анализа
           await sendAIResponse(chatId, aiResult, text);
         } else {
-          console.log('⚠️ ИИ не смог определить тег или произошла ошибка:', aiResult.error || 'Тег не найден');
+          console.log('⚠️ ИИ не смог определить теги или произошла ошибка:', aiResult.error || 'Теги не найдены');
         }
       })
       .catch((error) => {
@@ -132,19 +132,83 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
 // Функция отправки ответа ИИ
 async function sendAIResponse(chatId, aiResult, originalMessage) {
   try {
-    const aiMessage = `🤖 **ИИ определил категорию:** ${aiResult.tag.title}
+    const tags = aiResult.tags || [];
+    const primaryTag = aiResult.primaryTag;
     
+    if (tags.length === 0) {
+      const aiMessage = `🤖 **ИИ не смог определить категорию**
+
+🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
+
+💡 Попробуйте более конкретное описание или используйте кнопки в основном сообщении.`;
+      
+      await bot.sendMessage(chatId, aiMessage);
+      console.log('✅ Отправлен ответ ИИ: категория не определена');
+      return;
+    }
+    
+    // Формируем сообщение
+    let aiMessage;
+    if (tags.length === 1) {
+      // Один вариант - однозначное сопоставление
+      aiMessage = `🤖 **ИИ определил категорию:** ${primaryTag.title}
+      
 📊 **Уверенность:** ${Math.round(aiResult.confidence * 100)}%
 🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
 
-💡 Если категория неверна, используйте кнопки ниже для корректировки.`;
+✅ Однозначное сопоставление - других вариантов нет.`;
+    } else {
+      // Несколько вариантов
+      aiMessage = `🤖 **ИИ определил категорию:** ${primaryTag.title}
+      
+📊 **Уверенность:** ${Math.round(aiResult.confidence * 100)}%
+🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
 
-    await bot.sendMessage(chatId, aiMessage);
-    console.log(`✅ Отправлен ответ ИИ с тегом: ${aiResult.tag.title}`);
+💡 Найдено ${tags.length} вариантов. Выберите подходящий:`;
+    }
+    
+    // Создаем инлайн кнопки с вариантами тегов (максимум 5)
+    const inlineKeyboard = createAITagsKeyboard(tags.slice(0, 5));
+    
+    await bot.sendMessage(chatId, aiMessage, {
+      reply_markup: {
+        inline_keyboard: inlineKeyboard
+      }
+    });
+    
+    console.log(`✅ Отправлен ответ ИИ с ${tags.length} вариантами тегов`);
     
   } catch (error) {
     console.error('❌ Ошибка при отправке ответа ИИ:', error.message);
   }
+}
+
+// Функция создания инлайн клавиатуры с вариантами тегов ИИ
+function createAITagsKeyboard(tags) {
+  const keyboard = [];
+  
+  // Создаем кнопки по 2 в ряду
+  for (let i = 0; i < tags.length; i += 2) {
+    const row = [];
+    
+    // Первая кнопка в ряду
+    row.push({
+      text: `🎯 ${tags[i].title}`,
+      callback_data: `ai_tag_${tags[i].id}`
+    });
+    
+    // Вторая кнопка в ряду (если есть)
+    if (i + 1 < tags.length) {
+      row.push({
+        text: `🎯 ${tags[i + 1].title}`,
+        callback_data: `ai_tag_${tags[i + 1].id}`
+      });
+    }
+    
+    keyboard.push(row);
+  }
+  
+  return keyboard;
 }
 
 // Функция обработки команд
@@ -681,8 +745,12 @@ ${testResult.message}
 
 🧪 **Результат тестового анализа:**
 ${testResult.testAnalysis.success ? 
-  `🎯 Тег: ${testResult.testAnalysis.tag || 'Не найден'}
-📊 Уверенность: ${Math.round((testResult.testAnalysis.confidence || 0) * 100)}%` : 
+  `🎯 Найдено тегов: ${testResult.testAnalysis.tags?.length || 0}
+📊 Уверенность: ${Math.round((testResult.testAnalysis.confidence || 0) * 100)}%
+${testResult.testAnalysis.tags?.length > 0 ? 
+  `🏆 Основной: ${testResult.testAnalysis.primaryTag?.title || 'Не найден'}` : 
+  '❌ Теги не найдены'
+}` : 
   `❌ Ошибка: ${testResult.testAnalysis.error}`
 }`;
 
@@ -785,7 +853,56 @@ async function handleCallbackQuery(callbackQuery) {
       break;
       
     default:
-      console.log(`Неизвестный callback data: ${data}`);
+      // Обработка callback для ИИ тегов
+      if (data.startsWith('ai_tag_')) {
+        const tagId = data.replace('ai_tag_', '');
+        await handleAITagSelection(chatId, messageId, tagId, callbackQuery.message.text);
+      } else {
+        console.log(`Неизвестный callback data: ${data}`);
+      }
+  }
+}
+
+// Функция обработки выбора тега ИИ
+async function handleAITagSelection(chatId, messageId, tagId, originalMessage) {
+  try {
+    if (!supabaseClient) {
+      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.');
+      return;
+    }
+
+    // Получаем информацию о выбранном теге
+    const tagsResult = await supabaseClient.getAllTagsWithParents();
+    if (!tagsResult.success || !tagsResult.data) {
+      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.');
+      return;
+    }
+
+    const selectedTag = tagsResult.data.find(tag => tag.id === tagId);
+    if (!selectedTag) {
+      bot.sendMessage(chatId, '❌ Тег не найден.');
+      return;
+    }
+
+    // Формируем сообщение с подтверждением выбора
+    const confirmationMessage = `✅ **Выбран тег:** ${selectedTag.title}
+    
+${selectedTag.parent_title ? `📂 **Категория:** ${selectedTag.parent_title}` : ''}
+${selectedTag.description ? `📝 **Описание:** ${selectedTag.description}` : ''}
+
+🎯 Тег успешно применен к транзакции!`;
+
+    // Обновляем сообщение с результатом
+    bot.editMessageText(confirmationMessage, {
+      chat_id: chatId,
+      message_id: messageId
+    });
+
+    console.log(`✅ Пользователь выбрал тег ИИ: ${selectedTag.title} (ID: ${tagId})`);
+
+  } catch (error) {
+    console.error('❌ Ошибка при обработке выбора тега ИИ:', error.message);
+    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.');
   }
 }
 

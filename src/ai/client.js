@@ -40,7 +40,7 @@ class AIClient {
           throw new Error(`Неподдерживаемый провайдер ИИ: ${this.provider}`);
       }
       
-      return this.parseResponse(response);
+      return this.parseResponse(response, availableTags);
       
     } catch (error) {
       console.error('❌ Ошибка при анализе сообщения ИИ:', error.message);
@@ -120,7 +120,7 @@ class AIClient {
       return tagInfo;
     }).join('\n');
     
-    return `Проанализируй сообщение пользователя и определи наиболее подходящий тег (категорию расхода/дохода) из предоставленного списка.
+    return `Проанализируй сообщение пользователя и определи подходящие теги (категории расхода/дохода) из предоставленного списка.
 
 Сообщение пользователя: "${message}"
 
@@ -128,10 +128,16 @@ class AIClient {
 ${tagsList}
 
 Инструкции:
-1. Выбери ОДИН наиболее подходящий тег
-2. Если тег не найден, верни "Неопределено"
-3. Ответ должен содержать только название тега
-4. Не добавляй дополнительных объяснений
+1. Если есть ОДИН однозначно подходящий тег - верни только его название
+2. Если есть НЕСКОЛЬКО подходящих тегов - верни их через запятую в порядке убывания вероятности
+3. НЕ предлагай теги, которых нет в списке выше
+4. Если подходящих тегов нет - верни "Неопределено"
+5. Ответ должен содержать только названия тегов через запятую, без дополнительных объяснений
+
+Примеры ответов:
+- "Продукты" (один вариант)
+- "Продукты, Напитки" (несколько вариантов)
+- "Неопределено" (нет подходящих)
 
 Ответ:`;
   }
@@ -139,7 +145,7 @@ ${tagsList}
   /**
    * Парсинг ответа ИИ
    */
-  parseResponse(response) {
+  parseResponse(response, availableTags = []) {
     try {
       const cleanResponse = response.trim();
       
@@ -147,19 +153,34 @@ ${tagsList}
       if (!cleanResponse || cleanResponse.toLowerCase().includes('неопределено')) {
         return {
           success: true,
-          tag: null,
+          tags: [],
           confidence: 0,
           rawResponse: response
         };
       }
       
-      // Попытка найти точное совпадение с доступными тегами
-      // Это будет улучшено в следующих шагах с полным списком тегов
+      // Разделяем ответ по запятым и очищаем каждый тег
+      const suggestedTags = cleanResponse.split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
+      
+      // Находим соответствующие теги в доступном списке
+      const matchedTags = [];
+      
+      for (const suggestedTag of suggestedTags) {
+        const matchedTag = this.findMatchingTag(suggestedTag, availableTags);
+        if (matchedTag) {
+          matchedTags.push(matchedTag);
+        }
+      }
+      
+      // Ограничиваем количество вариантов до 5
+      const limitedTags = matchedTags.slice(0, 5);
       
       return {
         success: true,
-        tag: cleanResponse,
-        confidence: 0.8, // Базовая уверенность
+        tags: limitedTags,
+        confidence: limitedTags.length > 0 ? 0.8 : 0,
         rawResponse: response
       };
       
@@ -168,10 +189,43 @@ ${tagsList}
       return {
         success: false,
         error: error.message,
-        tag: null,
+        tags: [],
         confidence: 0
       };
     }
+  }
+  
+  /**
+   * Поиск соответствующего тега в списке доступных
+   */
+  findMatchingTag(suggestedTag, availableTags) {
+    const cleanSuggested = suggestedTag.toLowerCase().trim();
+    
+    // Точное совпадение
+    let exactMatch = availableTags.find(tag => 
+      tag.title.toLowerCase() === cleanSuggested
+    );
+    if (exactMatch) return exactMatch;
+    
+    // Частичное совпадение
+    let partialMatch = availableTags.find(tag => 
+      tag.title.toLowerCase().includes(cleanSuggested) ||
+      cleanSuggested.includes(tag.title.toLowerCase())
+    );
+    if (partialMatch) return partialMatch;
+    
+    // Поиск по ключевым словам
+    const keywords = cleanSuggested.split(/\s+/);
+    let keywordMatch = availableTags.find(tag => {
+      const tagWords = tag.title.toLowerCase().split(/\s+/);
+      return keywords.some(keyword => 
+        tagWords.some(tagWord => 
+          tagWord.includes(keyword) || keyword.includes(tagWord)
+        )
+      );
+    });
+    
+    return keywordMatch || null;
   }
   
   /**
