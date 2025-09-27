@@ -253,6 +253,49 @@ function escapeMarkdown(text) {
     .replace(/!/g, '\\!');     // !
 }
 
+// Функция экранирования Markdown символов для команд (не экранирует дефисы в командах)
+function escapeMarkdownForCommands(text) {
+  if (!text) return '';
+  
+  // Сначала защищаем команды от экранирования дефисов
+  const commandPattern = /(\/[a-zA-Z_]+-[a-zA-Z_]+)/g;
+  const commands = text.match(commandPattern) || [];
+  
+  let result = text;
+  
+  // Временно заменяем команды на плейсхолдеры
+  commands.forEach((command, index) => {
+    result = result.replace(command, `__COMMAND_${index}__`);
+  });
+  
+  // Экранируем все остальные символы, кроме дефисов
+  result = result.toString()
+    .replace(/\*/g, '\\*')      // *
+    .replace(/_/g, '\\_')      // _
+    .replace(/\[/g, '\\[')     // [
+    .replace(/\]/g, '\\]')     // ]
+    .replace(/\(/g, '\\(')     // (
+    .replace(/\)/g, '\\)')     // )
+    .replace(/~/g, '\\~')      // ~
+    .replace(/`/g, '\\`')      // `
+    .replace(/>/g, '\\>')      // >
+    .replace(/#/g, '\\#')     // #
+    .replace(/\+/g, '\\+')     // +
+    .replace(/=/g, '\\=')      // =
+    .replace(/\|/g, '\\|')     // |
+    .replace(/\{/g, '\\{')     // {
+    .replace(/\}/g, '\\}')     // }
+    .replace(/\./g, '\\.')     // .
+    .replace(/!/g, '\\!');     // !
+  
+  // Возвращаем команды на место
+  commands.forEach((command, index) => {
+    result = result.replace(`__COMMAND_${index}__`, command);
+  });
+  
+  return result;
+}
+
 // Функция обработки команд
 function handleCommand(message) {
   const chatId = message.chat.id;
@@ -297,10 +340,10 @@ function handleStartCommand(chatId, userName) {
 📋 *Доступные команды:*
 /start \\- приветствие
 /accounts \\- показать все счета из ZenMoney
-/accounts_upd \\- обновить счета в Supabase
-/tags_upd \\- обновить теги в Supabase
-/ai_settings \\- настройки ИИ
-/ai_test \\- тестирование ИИ
+/accounts\\_upd \\- обновить счета в Supabase
+/tags\\_upd \\- обновить теги в Supabase
+/ai\\_settings \\- настройки ИИ
+/ai\\_test \\- тестирование ИИ
 
 💡 *Как использовать:*
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
@@ -1182,7 +1225,10 @@ async function handleUnifiedEdit(chatId, messageId) {
 // Функция обработки выбора счета в едином сообщении
 async function handleUnifiedAccountSelection(chatId, messageId, settingName, originalMessage) {
   try {
+    console.log(`🔍 Начинаем обработку выбора счета: ${settingName} для сообщения ${chatId}_${messageId}`);
+    
     if (!supabaseClient) {
+      console.error('❌ Supabase клиент не инициализирован');
       bot.editMessageText('❌ Supabase не настроен', {
         chat_id: chatId,
         message_id: messageId
@@ -1191,7 +1237,10 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     }
     
     // Получаем значение настройки из Supabase
+    console.log(`📋 Получаем настройку: ${settingName}`);
     const settingResult = await supabaseClient.getSetting(settingName);
+    console.log(`📋 Результат получения настройки:`, settingResult);
+    
     let accountName;
     
     if (settingName === 'default_card') {
@@ -1202,8 +1251,12 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
       accountName = 'Бумажник';
     }
     
+    console.log(`🏦 Определено название счета: ${accountName}`);
+    
     // Обновляем сообщение с новым счетом
+    console.log(`📝 Обновляем сообщение с новым счетом: ${accountName}`);
     const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
+    console.log(`📝 Результат обновления сообщения:`, updatedMessage);
     
     // Получаем исходные теги от ИИ из хранилища
     const messageKey = `${chatId}_${messageId}`;
@@ -1214,7 +1267,9 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     // Используем исходные теги от ИИ, если они есть, иначе получаем из базы данных
     let availableTags = originalAiTags;
     if (availableTags.length === 0) {
+      console.log(`📋 Получаем теги из базы данных, так как исходные теги пусты`);
       const tagsResult = await supabaseClient.getAllTagsWithParents();
+      console.log(`📋 Результат получения тегов:`, tagsResult);
       availableTags = tagsResult.success && tagsResult.data ? tagsResult.data.filter(tag => tag.parent_id !== null) : [];
     }
     
@@ -1249,6 +1304,9 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     
     keyboard.push(mainButtons);
     
+    console.log(`⌨️ Создана клавиатура:`, keyboard);
+    console.log(`📤 Отправляем обновленное сообщение...`);
+    
     bot.editMessageText(updatedMessage, {
       chat_id: chatId,
       message_id: messageId,
@@ -1260,7 +1318,14 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     console.log(`✅ Счет обновлен в едином сообщении: ${accountName}`);
     
   } catch (error) {
-    console.error('Ошибка при обработке выбора счета в едином сообщении:', error);
+    console.error('❌ Ошибка при обработке выбора счета в едином сообщении:', error);
+    console.error('❌ Детали ошибки:', {
+      message: error.message,
+      stack: error.stack,
+      chatId,
+      messageId,
+      settingName
+    });
     bot.editMessageText('❌ Ошибка при выборе счета', {
       chat_id: chatId,
       message_id: messageId
