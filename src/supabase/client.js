@@ -322,6 +322,95 @@ class SupabaseClient {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Получение настройки по имени параметра
+   */
+  async getSetting(parameterName) {
+    try {
+      console.log(`🔍 Получаем настройку: ${parameterName}`);
+      
+      const { data, error } = await this.client
+        .from('settings')
+        .select('parameter_value')
+        .eq('parameter_name', parameterName)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+      
+      const value = data?.parameter_value || null;
+      console.log(`📋 Настройка ${parameterName}: ${value}`);
+      
+      return { 
+        success: true, 
+        value: value,
+        exists: !!data
+      };
+      
+    } catch (error) {
+      console.error(`❌ Ошибка при получении настройки ${parameterName}:`, error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        value: null,
+        exists: false
+      };
+    }
+  }
+
+  /**
+   * Обновление настройки
+   */
+  async updateSetting(parameterName, parameterValue) {
+    try {
+      console.log(`🔄 Обновляем настройку: ${parameterName} = ${parameterValue}`);
+      
+      const { data, error } = await this.client
+        .from('settings')
+        .upsert({
+          parameter_name: parameterName,
+          parameter_value: parameterValue,
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw error;
+      }
+      
+      console.log(`✅ Настройка ${parameterName} обновлена`);
+      return { success: true, data };
+      
+    } catch (error) {
+      console.error(`❌ Ошибка при обновлении настройки ${parameterName}:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение всех настроек
+   */
+  async getAllSettings() {
+    try {
+      const { data, error } = await this.client
+        .from('settings')
+        .select('*')
+        .order('parameter_name');
+      
+      if (error) {
+        throw error;
+      }
+      
+      return { success: true, data };
+      
+    } catch (error) {
+      console.error('❌ Ошибка при получении всех настроек:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = SupabaseClient;

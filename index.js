@@ -95,9 +95,15 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
         const defaultCurrencyResult = await supabaseClient.getSetting('default_currency');
         
         settings = {
-          default_card: defaultCardResult.success && defaultCardResult.value ? defaultCardResult.value : 'Карта',
-          default_cash: defaultCashResult.success && defaultCashResult.value ? defaultCashResult.value : 'Бумажник',
-          default_currency: defaultCurrencyResult.success && defaultCurrencyResult.value ? defaultCurrencyResult.value : 'RUB'
+          default_card: (defaultCardResult.success && defaultCardResult.value && defaultCardResult.value.trim() !== '') 
+            ? defaultCardResult.value.trim() 
+            : 'Карта',
+          default_cash: (defaultCashResult.success && defaultCashResult.value && defaultCashResult.value.trim() !== '') 
+            ? defaultCashResult.value.trim() 
+            : 'Бумажник',
+          default_currency: (defaultCurrencyResult.success && defaultCurrencyResult.value && defaultCurrencyResult.value.trim() !== '') 
+            ? defaultCurrencyResult.value.trim() 
+            : 'RUB'
         };
       } catch (settingsError) {
         console.warn('⚠️ Ошибка при получении настроек:', settingsError.message);
@@ -340,12 +346,12 @@ function handleStartCommand(chatId, userName) {
 Бот автоматически анализирует ваши сообщения и предлагает подходящую категорию расхода/дохода.
 
 📋 *Доступные команды:*
-/start - приветствие
-/accounts - показать все счета из ZenMoney
-/accounts_upd - обновить счета в Supabase
-/tags_upd - обновить теги в Supabase
-/ai_settings - настройки ИИ
-/ai_test - тестирование ИИ
+/start \\- приветствие
+/accounts \\- показать все счета из ZenMoney
+/accounts\\_upd \\- обновить счета в Supabase
+/tags\\_upd \\- обновить теги в Supabase
+/ai\\_settings \\- настройки ИИ
+/ai\\_test \\- тестирование ИИ
 
 💡 *Как использовать:*
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
@@ -1247,9 +1253,15 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     let accountName;
     
     if (settingName === 'default_card') {
-      accountName = settingResult.success && settingResult.value ? settingResult.value : 'Карта';
+      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
+      accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
+        ? settingResult.value.trim() 
+        : 'Карта';
     } else if (settingName === 'default_cash') {
-      accountName = settingResult.success && settingResult.value ? settingResult.value : 'Бумажник';
+      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
+      accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
+        ? settingResult.value.trim() 
+        : 'Бумажник';
     } else {
       accountName = 'Бумажник';
     }
