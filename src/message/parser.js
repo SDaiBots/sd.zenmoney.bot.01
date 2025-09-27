@@ -3,68 +3,36 @@
  */
 
 /**
- * Извлекает сумму и валюту из сообщения пользователя
+ * Извлекает сумму из сообщения пользователя
  * @param {string} message - Сообщение пользователя
- * @returns {Object} - Объект с суммой и валютой
+ * @returns {Object} - Объект с суммой
  */
-function extractAmountAndCurrency(message) {
+function extractAmount(message) {
   try {
-    // Паттерны для поиска сумм с валютами
-    const patterns = [
-      // Паттерн: число + валюта (например: "150 000 UZS", "500 руб", "100$")
-      /(\d+(?:\s+\d+)*(?:[.,]\d+)?)\s*([A-Z]{3}|руб|рублей|доллар|долларов|\$|€|₽)/gi,
-      // Паттерн: валюта + число (например: "UZS 150 000", "$100")
-      /([A-Z]{3}|\$|€|₽|руб|рублей|доллар|долларов)\s*(\d+(?:\s+\d+)*(?:[.,]\d+)?)/gi,
-      // Паттерн: только число (без валюты)
-      /(\d+(?:\s+\d+)*(?:[.,]\d+)?)/g
-    ];
-
-    let amount = null;
-    let currency = null;
-    let foundPattern = null;
-
-    // Пробуем каждый паттерн
-    for (let i = 0; i < patterns.length; i++) {
-      const pattern = patterns[i];
-      const matches = [...message.matchAll(pattern)];
+    // Паттерн для поиска чисел
+    const pattern = /(\d+(?:\s+\d+)*(?:[.,]\d+)?)/g;
+    const matches = [...message.matchAll(pattern)];
+    
+    if (matches.length > 0) {
+      // Берем первое совпадение
+      const match = matches[0];
+      const amount = parseAmount(match[1]);
       
-      if (matches.length > 0) {
-        // Берем первое совпадение
-        const match = matches[0];
-        
-        if (i === 0) {
-          // Паттерн: число + валюта
-          amount = parseAmount(match[1]);
-          currency = normalizeCurrency(match[2]);
-          foundPattern = 'amount_currency';
-        } else if (i === 1) {
-          // Паттерн: валюта + число
-          currency = normalizeCurrency(match[1]);
-          amount = parseAmount(match[2]);
-          foundPattern = 'currency_amount';
-        } else {
-          // Паттерн: только число
-          amount = parseAmount(match[1]);
-          foundPattern = 'amount_only';
-        }
-        
-        break;
-      }
+      return {
+        amount,
+        success: amount !== null
+      };
     }
 
     return {
-      amount,
-      currency,
-      foundPattern,
-      success: amount !== null
+      amount: null,
+      success: false
     };
 
   } catch (error) {
-    console.error('❌ Ошибка при извлечении суммы и валюты:', error.message);
+    console.error('❌ Ошибка при извлечении суммы:', error.message);
     return {
       amount: null,
-      currency: null,
-      foundPattern: null,
       success: false,
       error: error.message
     };
@@ -92,40 +60,6 @@ function parseAmount(amountStr) {
   }
 }
 
-/**
- * Нормализует название валюты
- * @param {string} currencyStr - Строка с валютой
- * @returns {string|null} - Нормализованная валюта или null
- */
-function normalizeCurrency(currencyStr) {
-  try {
-    if (!currencyStr) return null;
-    
-    const currency = currencyStr.toUpperCase().trim();
-    
-    // Маппинг различных вариантов валют
-    const currencyMap = {
-      'РУБ': 'RUB',
-      'РУБЛЕЙ': 'RUB',
-      'РУБЛЬ': 'RUB',
-      '₽': 'RUB',
-      'ДОЛЛАР': 'USD',
-      'ДОЛЛАРОВ': 'USD',
-      '$': 'USD',
-      'ЕВРО': 'EUR',
-      '€': 'EUR',
-      'UZS': 'UZS',
-      'СОМ': 'UZS',
-      'СОМОВ': 'UZS'
-    };
-    
-    return currencyMap[currency] || currency;
-    
-  } catch (error) {
-    console.error('❌ Ошибка при нормализации валюты:', error.message);
-    return null;
-  }
-}
 
 /**
  * Определяет тип счета на основе сообщения пользователя
@@ -199,62 +133,13 @@ function getDefaultAccountName(accountType, settings = {}) {
   }
 }
 
-/**
- * Получает валюту по умолчанию для счета
- * @param {string} accountName - Название счета
- * @param {Object} settings - Настройки из Supabase
- * @param {Object} supabaseClient - Клиент Supabase для получения информации о счете
- * @returns {Promise<string>} - Валюта
- */
-async function getDefaultCurrencyForAccount(accountName, settings = {}, supabaseClient = null) {
-  try {
-    // Если в настройках есть валюта по умолчанию, используем её
-    if (settings.default_currency) {
-      return settings.default_currency;
-    }
-    
-    // Если есть клиент Supabase, пытаемся получить реальную валюту счета
-    if (supabaseClient) {
-      try {
-        const accountResult = await supabaseClient.getAccountByName(accountName);
-        if (accountResult.success && accountResult.data) {
-          const currencyResult = await supabaseClient.getCurrencyByInstrumentId(accountResult.data.instrument_id);
-          if (currencyResult.success) {
-            console.log(`💱 Найдена валюта счета ${accountName}: ${currencyResult.currency}`);
-            return currencyResult.currency;
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️ Не удалось получить валюту счета ${accountName}:`, error.message);
-      }
-    }
-    
-    // Fallback: определяем по названию счета
-    const lowerAccountName = accountName.toLowerCase();
-    
-    if (lowerAccountName.includes('uzs') || lowerAccountName.includes('сом')) {
-      return 'UZS';
-    } else if (lowerAccountName.includes('usd') || lowerAccountName.includes('доллар')) {
-      return 'USD';
-    } else if (lowerAccountName.includes('eur') || lowerAccountName.includes('евро')) {
-      return 'EUR';
-    } else {
-      return 'RUB'; // По умолчанию рубли
-    }
-    
-  } catch (error) {
-    console.error('❌ Ошибка при получении валюты по умолчанию:', error.message);
-    return 'RUB';
-  }
-}
 
 /**
  * Форматирует сумму для отображения
  * @param {number} amount - Сумма
- * @param {string} currency - Валюта
  * @returns {string} - Отформатированная сумма
  */
-function formatAmount(amount, currency) {
+function formatAmount(amount) {
   try {
     if (amount === null || amount === undefined) {
       return '0';
@@ -266,20 +151,18 @@ function formatAmount(amount, currency) {
       maximumFractionDigits: 2
     }).format(amount);
     
-    return `${formattedAmount} ${currency}`;
+    return formattedAmount;
     
   } catch (error) {
     console.error('❌ Ошибка при форматировании суммы:', error.message);
-    return `${amount} ${currency}`;
+    return amount.toString();
   }
 }
 
 module.exports = {
-  extractAmountAndCurrency,
+  extractAmount,
   parseAmount,
-  normalizeCurrency,
   detectAccountType,
   getDefaultAccountName,
-  getDefaultCurrencyForAccount,
   formatAmount
 };

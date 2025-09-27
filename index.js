@@ -3,7 +3,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const SupabaseClient = require('./src/supabase/client');
 const { analyzeMessageWithAI } = require('./src/ai/analyzer');
-const { createUnifiedTransactionMessage, createUnifiedTransactionKeyboard, updateMessageWithNewTag, updateMessageWithNewAccount, updateMessageWithNewCurrency, updateMessageWithNewAccountAndCurrency } = require('./src/message/unified');
+const { createUnifiedTransactionMessage, createUnifiedTransactionKeyboard, updateMessageWithNewTag, updateMessageWithNewAccount } = require('./src/message/unified');
 require('dotenv').config();
 
 const app = express();
@@ -139,7 +139,6 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
       try {
         const defaultCardResult = await supabaseClient.getSetting('default_card');
         const defaultCashResult = await supabaseClient.getSetting('default_cash');
-        const defaultCurrencyResult = await supabaseClient.getSetting('default_currency');
         
         settings = {
           default_card: (defaultCardResult.success && defaultCardResult.value && defaultCardResult.value.trim() !== '') 
@@ -147,10 +146,7 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
             : 'Карта',
           default_cash: (defaultCashResult.success && defaultCashResult.value && defaultCashResult.value.trim() !== '') 
             ? defaultCashResult.value.trim() 
-            : 'Бумажник',
-          default_currency: (defaultCurrencyResult.success && defaultCurrencyResult.value && defaultCurrencyResult.value.trim() !== '') 
-            ? defaultCurrencyResult.value.trim() 
-            : 'RUB'
+            : 'Бумажник'
         };
       } catch (settingsError) {
         console.warn('⚠️ Ошибка при получении настроек:', settingsError.message);
@@ -1315,44 +1311,9 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     
     console.log(`🏦 Определено название счета: ${accountName}`);
     
-    // Получаем валюту для нового счета
-    console.log(`💱 Получаем валюту для счета: ${accountName}`);
-    const currencyResult = await supabaseClient.getAccountByName(accountName);
-    console.log(`💱 Результат поиска счета:`, currencyResult);
-    
-    let newCurrency = 'RUB'; // По умолчанию
-    
-    if (currencyResult.success && currencyResult.data) {
-      console.log(`💱 Найден счет в базе данных:`, currencyResult.data);
-      const currencyData = await supabaseClient.getCurrencyByInstrumentId(currencyResult.data.instrument_id);
-      console.log(`💱 Результат получения валюты:`, currencyData);
-      
-      if (currencyData.success) {
-        newCurrency = currencyData.currency;
-        console.log(`💱 Найдена валюта для счета ${accountName}: ${newCurrency}`);
-      } else {
-        console.log(`⚠️ Не удалось получить валюту для instrument_id ${currencyResult.data.instrument_id}`);
-      }
-    } else {
-      console.log(`⚠️ Счет ${accountName} не найден в базе данных, используем валюту по умолчанию: ${newCurrency}`);
-      
-      // Попробуем определить валюту по названию счета как fallback
-      const lowerAccountName = accountName.toLowerCase();
-      if (lowerAccountName.includes('uzs') || lowerAccountName.includes('сом')) {
-        newCurrency = 'UZS';
-        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
-      } else if (lowerAccountName.includes('usd') || lowerAccountName.includes('доллар')) {
-        newCurrency = 'USD';
-        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
-      } else if (lowerAccountName.includes('eur') || lowerAccountName.includes('евро')) {
-        newCurrency = 'EUR';
-        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
-      }
-    }
-    
-    // Обновляем сообщение с новым счетом и валютой
-    console.log(`📝 Обновляем сообщение с новым счетом и валютой: ${accountName} / ${newCurrency}`);
-    const updatedMessage = updateMessageWithNewAccountAndCurrency(originalMessage, accountName, newCurrency);
+    // Обновляем сообщение с новым счетом
+    console.log(`📝 Обновляем сообщение с новым счетом: ${accountName}`);
+    const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
     console.log(`📝 Результат обновления сообщения:`, updatedMessage);
     
     // Получаем исходные теги от ИИ из хранилища
