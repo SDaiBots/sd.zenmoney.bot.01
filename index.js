@@ -38,8 +38,6 @@ const messageCounters = new Map();
 // Хранилище исходных тегов от ИИ для каждого сообщения
 const aiTagsStorage = new Map();
 
-// Хранилище данных транзакций для подтверждения
-const transactionStorage = new Map();
 
 // Обработчик входящих сообщений от Telegram
 app.post('/webhook', async (req, res) => {
@@ -1016,18 +1014,8 @@ async function handleCallbackQuery(callbackQuery) {
       break;
       
     default:
-      // Обработка callback для подтверждения создания транзакции
-      if (data.startsWith('confirm_create_')) {
-        const originalMessageId = data.replace('confirm_create_', '');
-        await handleConfirmCreateTransaction(chatId, messageId, originalMessageId);
-      }
-      // Обработка callback для отмены создания транзакции
-      else if (data.startsWith('cancel_create_')) {
-        const originalMessageId = data.replace('cancel_create_', '');
-        await handleCancelCreateTransaction(chatId, messageId, originalMessageId);
-      }
       // Обработка callback для ИИ тегов (старые)
-      else if (data.startsWith('ai_tag_')) {
+      if (data.startsWith('ai_tag_')) {
         const tagId = data.replace('ai_tag_', '');
         await handleAITagSelection(chatId, messageId, tagId, callbackQuery.message.text);
       }
@@ -1262,44 +1250,41 @@ async function handleUnifiedApply(chatId, messageId, originalMessage) {
     
     console.log('📊 Распарсенные данные транзакции:', transactionData);
     
-    // Формируем структуру записи для ZenMoney
-    const structureResult = await createZenMoneyTransactionStructure(transactionData, supabaseClient);
-    if (!structureResult.success) {
-      bot.editMessageText(`❌ Ошибка при формировании структуры: ${structureResult.error}`, {
+    // Создаем транзакцию в ZenMoney
+    const createResult = await createTransactionInZenMoney(transactionData, supabaseClient);
+    
+    if (createResult.success) {
+      // Формируем новое сообщение с подтверждением
+      const successMessage = `✅ Запись добавлена
+
+${transactionData.tag.title}
+${transactionData.account.name}
+${transactionData.formattedAmount} ₽
+${transactionData.comment}`;
+      
+      // Обновляем сообщение без кнопок
+      bot.editMessageText(successMessage, {
         chat_id: chatId,
         message_id: messageId
       });
-      return;
+      
+      console.log('✅ Транзакция успешно создана в ZenMoney');
+      
+    } else {
+      // Обрабатываем ошибку создания
+      const errorMessage = `❌ Ошибка при создании записи в ZenMoney
+
+${createResult.error}
+
+💡 Проверьте настройки подключения к ZenMoney API.`;
+      
+      bot.editMessageText(errorMessage, {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      
+      console.error('❌ Ошибка при создании транзакции в ZenMoney:', createResult.error);
     }
-    
-    // Форматируем структуру для отображения пользователю
-    const displayText = formatTransactionForDisplay(transactionData);
-    
-    // Создаем клавиатуру с кнопками подтверждения
-    const confirmationKeyboard = [
-      [
-        { text: '✅ Подтвердить', callback_data: `confirm_create_${messageId}` },
-        { text: '❌ Отменить', callback_data: `cancel_create_${messageId}` }
-      ]
-    ];
-    
-    // Отправляем новое сообщение с структурой записи и кнопками подтверждения
-    const confirmationMessage = await bot.sendMessage(chatId, displayText, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: confirmationKeyboard
-      }
-    });
-    
-    // Сохраняем данные транзакции для последующего использования
-    const transactionKey = `confirm_${chatId}_${confirmationMessage.message_id}`;
-    transactionStorage.set(transactionKey, {
-      transactionData,
-      zenMoneyStructure: structureResult.transaction,
-      originalMessageId: messageId
-    });
-    
-    console.log('✅ Структура записи отправлена для подтверждения');
     
   } catch (error) {
     console.error('❌ Ошибка при обработке применения транзакции:', error.message);
@@ -1313,12 +1298,20 @@ async function handleUnifiedApply(chatId, messageId, originalMessage) {
 // Функция обработки отмены транзакции в едином сообщении
 async function handleUnifiedCancel(chatId, messageId, originalMessage) {
   try {
-    // Извлекаем структуру записи из оригинального сообщения
-    const structureMatch = originalMessage.match(/Новая запись от (.+)/s);
-    const structure = structureMatch ? originalMessage : originalMessage;
+    console.log('🔄 Обрабатываем нажатие кнопки "отменить запись"...');
+    
+    // Парсим данные транзакции из сообщения
+    const transactionData = parseTransactionFromMessage(originalMessage);
+    if (!transactionData) {
+      bot.editMessageText('❌ Ошибка при парсинге данных транзакции', {
+        chat_id: chatId,
+        message_id: messageId
+      });
+      return;
+    }
     
     // Добавляем зачеркивание ко всем строкам структуры и экранируем
-    const strikethroughStructure = structure.split('\n').map(line => {
+    const strikethroughStructure = originalMessage.split('\n').map(line => {
       if (!line.trim()) return line;
       
       // Экранируем специальные символы MarkdownV2
@@ -1576,147 +1569,6 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
   }
 }
 
-// ===== ОБРАБОТЧИКИ ПОДТВЕРЖДЕНИЯ СОЗДАНИЯ ТРАНЗАКЦИИ =====
-
-/**
- * Обрабатывает подтверждение создания транзакции в ZenMoney
- * @param {number} chatId - ID чата
- * @param {number} messageId - ID сообщения с подтверждением
- * @param {number} originalMessageId - ID оригинального сообщения
- */
-async function handleConfirmCreateTransaction(chatId, messageId, originalMessageId) {
-  try {
-    console.log('🔄 Обрабатываем подтверждение создания транзакции...');
-    
-    // Получаем данные транзакции из хранилища
-    const transactionKey = `confirm_${chatId}_${messageId}`;
-    const transactionData = transactionStorage.get(transactionKey);
-    
-    if (!transactionData) {
-      bot.editMessageText('❌ Данные транзакции не найдены', {
-        chat_id: chatId,
-        message_id: messageId
-      });
-      return;
-    }
-    
-    console.log('📊 Создаем транзакцию в ZenMoney:', transactionData.zenMoneyStructure);
-    
-    // Создаем транзакцию в ZenMoney
-    const createResult = await createTransactionInZenMoney(transactionData.transactionData, supabaseClient);
-    
-    if (createResult.success) {
-      // Обновляем сообщение с подтверждением
-      const successMessage = `✅ *Транзакция успешно создана в ZenMoney!*
-
-📅 **Дата:** ${new Date().toLocaleDateString('ru-RU')}
-🏷️ **Категория:** ${transactionData.transactionData.tag.title}
-🏦 **Счет:** ${transactionData.transactionData.account.name}
-💰 **Сумма:** ${transactionData.transactionData.formattedAmount} ₽
-💬 **Комментарий:** ${transactionData.transactionData.comment}
-
-🎉 Запись добавлена в ваш учет!`;
-      
-      bot.editMessageText(successMessage, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown'
-      });
-      
-      // Обновляем оригинальное сообщение
-      bot.editMessageText(`✅ Запись добавлена в ZenMoney
-
-${transactionData.transactionData.tag.title}
-${transactionData.transactionData.account.name}
-${transactionData.transactionData.formattedAmount} ₽
-${transactionData.transactionData.comment}`, {
-        chat_id: chatId,
-        message_id: transactionData.originalMessageId
-      });
-      
-      // Удаляем данные из хранилища
-      transactionStorage.delete(transactionKey);
-      
-      console.log('✅ Транзакция успешно создана в ZenMoney');
-      
-    } else {
-      // Обрабатываем ошибку создания
-      const errorMessage = `❌ *Ошибка при создании транзакции в ZenMoney*
-
-${createResult.error}
-
-💡 Проверьте настройки подключения к ZenMoney API.`;
-      
-      bot.editMessageText(errorMessage, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown'
-      });
-      
-      console.error('❌ Ошибка при создании транзакции в ZenMoney:', createResult.error);
-    }
-    
-  } catch (error) {
-    console.error('❌ Ошибка при обработке подтверждения создания транзакции:', error.message);
-    bot.editMessageText('❌ Ошибка при создании транзакции', {
-      chat_id: chatId,
-      message_id: messageId
-    });
-  }
-}
-
-/**
- * Обрабатывает отмену создания транзакции
- * @param {number} chatId - ID чата
- * @param {number} messageId - ID сообщения с подтверждением
- * @param {number} originalMessageId - ID оригинального сообщения
- */
-async function handleCancelCreateTransaction(chatId, messageId, originalMessageId) {
-  try {
-    console.log('🔄 Обрабатываем отмену создания транзакции...');
-    
-    // Получаем данные транзакции из хранилища
-    const transactionKey = `confirm_${chatId}_${messageId}`;
-    const transactionData = transactionStorage.get(transactionKey);
-    
-    if (!transactionData) {
-      bot.editMessageText('❌ Данные транзакции не найдены', {
-        chat_id: chatId,
-        message_id: messageId
-      });
-      return;
-    }
-    
-    // Обновляем сообщение с отменой
-    const cancelMessage = `❌ *Создание транзакции отменено*
-
-📅 **Дата:** ${new Date().toLocaleDateString('ru-RU')}
-🏷️ **Категория:** ${transactionData.transactionData.tag.title}
-🏦 **Счет:** ${transactionData.transactionData.account.name}
-💰 **Сумма:** ${transactionData.transactionData.formattedAmount} ₽
-💬 **Комментарий:** ${transactionData.transactionData.comment}
-
-🚫 Транзакция не была создана в ZenMoney.`;
-    
-    bot.editMessageText(cancelMessage, {
-      chat_id: chatId,
-      message_id: messageId,
-      parse_mode: 'Markdown'
-    });
-    
-    // Удаляем данные из хранилища
-    transactionStorage.delete(transactionKey);
-    
-    console.log('❌ Создание транзакции отменено пользователем');
-    
-  } catch (error) {
-    console.error('❌ Ошибка при обработке отмены создания транзакции:', error.message);
-    bot.editMessageText('❌ Ошибка при отмене транзакции', {
-      chat_id: chatId,
-      message_id: messageId
-    });
-  }
-}
 
 // Вспомогательные функции
 
