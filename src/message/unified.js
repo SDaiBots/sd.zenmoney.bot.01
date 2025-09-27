@@ -206,11 +206,17 @@ function updateMessageWithNewTag(currentMessageText, newTagTitle) {
  */
 function updateMessageWithNewAccount(currentMessageText, newAccountName) {
   try {
+    console.log(`🔄 Обновляем счет в сообщении: "${newAccountName}"`);
+    console.log(`📝 Исходное сообщение:`, currentMessageText);
+    
     // Заменяем счет в сообщении
     const updatedMessage = currentMessageText.replace(
       /👛 .+/,
       `👛 ${newAccountName}`
     );
+    
+    console.log(`📝 Обновленное сообщение:`, updatedMessage);
+    console.log(`✅ Сообщение обновлено: ${updatedMessage !== currentMessageText ? 'ДА' : 'НЕТ'}`);
     
     return updatedMessage;
     
