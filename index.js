@@ -136,13 +136,13 @@ async function sendAIResponse(chatId, aiResult, originalMessage) {
     const primaryTag = aiResult.primaryTag;
     
     if (tags.length === 0) {
-      const aiMessage = `🤖 **ИИ не смог определить категорию**
+      const aiMessage = `🤖 *ИИ не смог определить категорию*
 
-🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
+🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
 
 💡 Попробуйте более конкретное описание или используйте кнопки в основном сообщении.`;
       
-      await bot.sendMessage(chatId, aiMessage);
+      await bot.sendMessage(chatId, aiMessage, { parse_mode: 'Markdown' });
       console.log('✅ Отправлен ответ ИИ: категория не определена');
       return;
     }
@@ -151,18 +151,18 @@ async function sendAIResponse(chatId, aiResult, originalMessage) {
     let aiMessage;
     if (tags.length === 1) {
       // Один вариант - однозначное сопоставление
-      aiMessage = `🤖 **ИИ определил категорию:** ${primaryTag.title}
+      aiMessage = `🤖 *ИИ определил категорию:* ${escapeMarkdown(primaryTag.title)}
       
-📊 **Уверенность:** ${Math.round(aiResult.confidence * 100)}%
-🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
+📊 *Уверенность:* ${Math.round(aiResult.confidence * 100)}%
+🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
 
 ✅ Однозначное сопоставление - других вариантов нет.`;
     } else {
       // Несколько вариантов
-      aiMessage = `🤖 **ИИ определил категорию:** ${primaryTag.title}
+      aiMessage = `🤖 *ИИ определил категорию:* ${escapeMarkdown(primaryTag.title)}
       
-📊 **Уверенность:** ${Math.round(aiResult.confidence * 100)}%
-🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
+📊 *Уверенность:* ${Math.round(aiResult.confidence * 100)}%
+🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
 
 💡 Найдено ${tags.length} вариантов. Выберите подходящий:`;
     }
@@ -171,6 +171,7 @@ async function sendAIResponse(chatId, aiResult, originalMessage) {
     const inlineKeyboard = createAITagsKeyboard(tags.slice(0, 5));
     
     await bot.sendMessage(chatId, aiMessage, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: inlineKeyboard
       }
@@ -211,8 +212,33 @@ function createAITagsKeyboard(tags) {
   return keyboard;
 }
 
+// Функция экранирования Markdown символов для Telegram
+function escapeMarkdown(text) {
+  if (!text) return '';
+  
+  // Экранируем специальные символы Markdown
+  return text.toString()
+    .replace(/\*/g, '\\*')      // *
+    .replace(/_/g, '\\_')      // _
+    .replace(/\[/g, '\\[')     // [
+    .replace(/\]/g, '\\]')     // ]
+    .replace(/\(/g, '\\(')     // (
+    .replace(/\)/g, '\\)')     // )
+    .replace(/~/g, '\\~')      // ~
+    .replace(/`/g, '\\`')      // `
+    .replace(/>/g, '\\>')      // >
+    .replace(/#/g, '\\#')     // #
+    .replace(/\+/g, '\\+')     // +
+    .replace(/-/g, '\\-')      // -
+    .replace(/=/g, '\\=')      // =
+    .replace(/\|/g, '\\|')     // |
+    .replace(/\{/g, '\\{')     // {
+    .replace(/\}/g, '\\}')     // }
+    .replace(/\./g, '\\.')     // .
+    .replace(/!/g, '\\!');     // !
+}
+
 // Функция обработки команд
-function handleCommand(message) {
   const chatId = message.chat.id;
   const text = message.text;
   const user = message.from;
@@ -244,26 +270,26 @@ function handleCommand(message) {
 
 // Обработчик команды /start
 function handleStartCommand(chatId, userName) {
-  const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${userName}!
+  const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${escapeMarkdown(userName)}!
 
-💰 **Основной функционал:**
-Отправьте любое сообщение, и бот покажет структуру транзакции с ИИ-анализом категории и возможностью применить, отменить или скорректировать.
+💰 *Основной функционал:*
+Отправьте любое сообщение, и бот покажет структуру транзакции с ИИ\\-анализом категории и возможностью применить, отменить или скорректировать.
 
-🤖 **ИИ-функции:**
+🤖 *ИИ\\-функции:*
 Бот автоматически анализирует ваши сообщения и предлагает подходящую категорию расхода/дохода.
 
-📋 **Доступные команды:**
-/start - приветствие
-/accounts - показать все счета из ZenMoney
-/accounts_upd - обновить счета в Supabase
-/tags_upd - обновить теги в Supabase
-/ai_settings - настройки ИИ
-/ai_test - тестирование ИИ
+📋 *Доступные команды:*
+/start \\- приветствие
+/accounts \\- показать все счета из ZenMoney
+/accounts_upd \\- обновить счета в Supabase
+/tags_upd \\- обновить теги в Supabase
+/ai_settings \\- настройки ИИ
+/ai_test \\- тестирование ИИ
 
-💡 **Как использовать:**
+💡 *Как использовать:*
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
   
-  bot.sendMessage(chatId, welcomeMessage)
+  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' })
     .then(() => {
       console.log(`Отправлено приветствие пользователю ${userName}`);
     })
@@ -685,31 +711,31 @@ async function handleAISettingsCommand(chatId, userName) {
     const settingsResult = await supabaseClient.getActiveAISettings();
     
     if (!settingsResult.success || !settingsResult.data) {
-      bot.sendMessage(chatId, `🤖 **Настройки ИИ не найдены**
+      bot.sendMessage(chatId, `🤖 *Настройки ИИ не найдены*
 
 ❌ Активная конфигурация ИИ не настроена.
 
-💡 Для настройки ИИ обратитесь к администратору.`);
+💡 Для настройки ИИ обратитесь к администратору.`, { parse_mode: 'Markdown' });
       return;
     }
 
     const aiSettings = settingsResult.data;
     const status = aiSettings.is_active ? '✅ Активна' : '❌ Неактивна';
     
-    const message = `🤖 **Текущие настройки ИИ:**
+    const message = `🤖 *Текущие настройки ИИ:*
 
-🔧 **Провайдер:** ${aiSettings.provider || 'Не указан'}
-🤖 **Модель:** ${aiSettings.model || 'Не указана'}
-🔑 **API ключ:** ${aiSettings.api_key ? '✅ Настроен' : '❌ Не настроен'}
-📊 **Макс. токенов:** ${aiSettings.max_tokens || 'Не указано'}
-🌡️ **Температура:** ${aiSettings.temperature || 'Не указана'}
-⏱️ **Таймаут:** ${aiSettings.timeout || 'Не указан'} сек
-📝 **Описание:** ${aiSettings.description || 'Нет описания'}
-📅 **Обновлено:** ${aiSettings.updated_at ? new Date(aiSettings.updated_at).toLocaleString('ru-RU') : 'Неизвестно'}
+🔧 *Провайдер:* ${escapeMarkdown(aiSettings.provider || 'Не указан')}
+🤖 *Модель:* ${escapeMarkdown(aiSettings.model || 'Не указана')}
+🔑 *API ключ:* ${aiSettings.api_key ? '✅ Настроен' : '❌ Не настроен'}
+📊 *Макс\\. токенов:* ${aiSettings.max_tokens || 'Не указано'}
+🌡️ *Температура:* ${aiSettings.temperature || 'Не указана'}
+⏱️ *Таймаут:* ${aiSettings.timeout || 'Не указан'} сек
+📝 *Описание:* ${escapeMarkdown(aiSettings.description || 'Нет описания')}
+📅 *Обновлено:* ${aiSettings.updated_at ? new Date(aiSettings.updated_at).toLocaleString('ru-RU') : 'Неизвестно'}
 
-**Статус:** ${status}`;
+*Статус:* ${status}`;
 
-    bot.sendMessage(chatId, message)
+    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' })
       .then(() => {
         console.log(`Отправлены настройки ИИ пользователю ${userName}`);
       })
@@ -739,33 +765,35 @@ async function handleAITestCommand(chatId, userName) {
     const testResult = await testAIFunctionality(supabaseClient);
     
     if (testResult.success) {
-      const message = `✅ **Тест ИИ прошел успешно!**
+      const message = `✅ *Тест ИИ прошел успешно\\!*
 
-${testResult.message}
+${escapeMarkdown(testResult.message)}
 
-🧪 **Результат тестового анализа:**
+🧪 *Результат тестового анализа:*
 ${testResult.testAnalysis.success ? 
   `🎯 Найдено тегов: ${testResult.testAnalysis.tags?.length || 0}
 📊 Уверенность: ${Math.round((testResult.testAnalysis.confidence || 0) * 100)}%
 ${testResult.testAnalysis.tags?.length > 0 ? 
-  `🏆 Основной: ${testResult.testAnalysis.primaryTag?.title || 'Не найден'}` : 
+  `🏆 Основной: ${escapeMarkdown(testResult.testAnalysis.primaryTag?.title || 'Не найден')}` : 
   '❌ Теги не найдены'
 }` : 
-  `❌ Ошибка: ${testResult.testAnalysis.error}`
+  `❌ Ошибка: ${escapeMarkdown(testResult.testAnalysis.error)}`
 }`;
 
       bot.editMessageText(message, {
         chat_id: chatId,
-        message_id: loadingMessage.message_id
+        message_id: loadingMessage.message_id,
+        parse_mode: 'Markdown'
       });
     } else {
-      bot.editMessageText(`❌ **Тест ИИ не прошел**
+      bot.editMessageText(`❌ *Тест ИИ не прошел*
 
-Ошибка: ${testResult.error}
+Ошибка: ${escapeMarkdown(testResult.error)}
 
 💡 Проверьте настройки ИИ командой /ai_settings`, {
         chat_id: chatId,
-        message_id: loadingMessage.message_id
+        message_id: loadingMessage.message_id,
+        parse_mode: 'Markdown'
       });
     }
 
@@ -885,17 +913,18 @@ async function handleAITagSelection(chatId, messageId, tagId, originalMessage) {
     }
 
     // Формируем сообщение с подтверждением выбора
-    const confirmationMessage = `✅ **Выбран тег:** ${selectedTag.title}
+    const confirmationMessage = `✅ *Выбран тег:* ${escapeMarkdown(selectedTag.title)}
     
-${selectedTag.parent_title ? `📂 **Категория:** ${selectedTag.parent_title}` : ''}
-${selectedTag.description ? `📝 **Описание:** ${selectedTag.description}` : ''}
+${selectedTag.parent_title ? `📂 *Категория:* ${escapeMarkdown(selectedTag.parent_title)}` : ''}
+${selectedTag.description ? `📝 *Описание:* ${escapeMarkdown(selectedTag.description)}` : ''}
 
-🎯 Тег успешно применен к транзакции!`;
+🎯 Тег успешно применен к транзакции\\!`;
 
     // Обновляем сообщение с результатом
     bot.editMessageText(confirmationMessage, {
       chat_id: chatId,
-      message_id: messageId
+      message_id: messageId,
+      parse_mode: 'Markdown'
     });
 
     console.log(`✅ Пользователь выбрал тег ИИ: ${selectedTag.title} (ID: ${tagId})`);
