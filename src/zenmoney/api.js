@@ -3,10 +3,10 @@ const axios = require('axios');
 class ZenMoneyAPI {
   constructor() {
     this.baseURL = process.env.ZENMONEY_API_BASE_URL || 'https://api.zenmoney.ru';
-    this.accessToken = process.env.ZENMONEY_ACCESS_TOKEN;
+    this.accessToken = process.env.ZENMONEY_TOKEN;
     
     if (!this.accessToken) {
-      throw new Error('ZENMONEY_ACCESS_TOKEN не установлен в переменных окружения');
+      throw new Error('ZENMONEY_TOKEN не установлен в переменных окружения');
     }
 
     this.client = axios.create({
