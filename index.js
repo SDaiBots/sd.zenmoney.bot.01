@@ -2,6 +2,7 @@ const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const SupabaseClient = require('./src/supabase/client');
+const { analyzeMessageWithAI } = require('./src/ai/analyzer');
 require('dotenv').config();
 
 const app = express();
@@ -68,8 +69,49 @@ function handleMessage(message) {
     return;
   }
   
-  // Обработка обычных сообщений - показываем структуру транзакции
+  // Обработка обычных сообщений - показываем структуру транзакции с ИИ-анализом
   if (text) {
+    handleTransactionWithAI(chatId, text, user, fullUserName);
+  }
+}
+
+// Функция обработки транзакции с ИИ-анализом
+async function handleTransactionWithAI(chatId, text, user, fullUserName) {
+  try {
+    console.log(`🤖 Начинаем ИИ-анализ сообщения от пользователя ${fullUserName}: "${text}"`);
+    
+    // Сначала отправляем базовую структуру транзакции
+    const transactionStructure = createTransactionStructure(text, 'Бумажник');
+    const inlineKeyboard = createTransactionKeyboard();
+    
+    const baseMessage = await bot.sendMessage(chatId, transactionStructure, {
+      reply_markup: {
+        inline_keyboard: inlineKeyboard
+      }
+    });
+    
+    console.log(`✅ Отправлена базовая структура транзакции пользователю ${fullUserName} (ID: ${user.id})`);
+    
+    // Затем запускаем ИИ-анализ асинхронно
+    analyzeMessageWithAI(text, supabaseClient)
+      .then(async (aiResult) => {
+        if (aiResult.success && aiResult.tag) {
+          console.log(`🎯 ИИ определил тег: ${aiResult.tag.title}`);
+          
+          // Отправляем результат ИИ-анализа
+          await sendAIResponse(chatId, aiResult, text);
+        } else {
+          console.log('⚠️ ИИ не смог определить тег или произошла ошибка:', aiResult.error || 'Тег не найден');
+        }
+      })
+      .catch((error) => {
+        console.error('❌ Ошибка при ИИ-анализе:', error.message);
+      });
+      
+  } catch (error) {
+    console.error('❌ Ошибка при обработке транзакции с ИИ:', error.message);
+    
+    // Fallback: отправляем обычную структуру транзакции
     const transactionStructure = createTransactionStructure(text, 'Бумажник');
     const inlineKeyboard = createTransactionKeyboard();
     
@@ -79,11 +121,29 @@ function handleMessage(message) {
       }
     })
     .then(() => {
-      console.log(`Отправлена структура транзакции пользователю ${fullUserName} (ID: ${user.id})`);
+      console.log(`✅ Отправлена fallback структура транзакции пользователю ${fullUserName}`);
     })
-    .catch((error) => {
-      console.error('Ошибка при отправке структуры транзакции:', error);
+    .catch((sendError) => {
+      console.error('❌ Ошибка при отправке fallback структуры:', sendError);
     });
+  }
+}
+
+// Функция отправки ответа ИИ
+async function sendAIResponse(chatId, aiResult, originalMessage) {
+  try {
+    const aiMessage = `🤖 **ИИ определил категорию:** ${aiResult.tag.title}
+    
+📊 **Уверенность:** ${Math.round(aiResult.confidence * 100)}%
+🔧 **Модель:** ${aiResult.aiSettings.provider} (${aiResult.aiSettings.model})
+
+💡 Если категория неверна, используйте кнопки ниже для корректировки.`;
+
+    await bot.sendMessage(chatId, aiMessage);
+    console.log(`✅ Отправлен ответ ИИ с тегом: ${aiResult.tag.title}`);
+    
+  } catch (error) {
+    console.error('❌ Ошибка при отправке ответа ИИ:', error.message);
   }
 }
 
@@ -107,6 +167,12 @@ function handleCommand(message) {
     case '/tags_upd':
       handleTagsUpdCommand(chatId, userName);
       break;
+    case '/ai_settings':
+      handleAISettingsCommand(chatId, userName);
+      break;
+    case '/ai_test':
+      handleAITestCommand(chatId, userName);
+      break;
     default:
       bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.');
   }
@@ -117,13 +183,18 @@ function handleStartCommand(chatId, userName) {
   const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${userName}!
 
 💰 **Основной функционал:**
-Отправьте любое сообщение, и бот покажет структуру транзакции с возможностью применить, отменить или скорректировать.
+Отправьте любое сообщение, и бот покажет структуру транзакции с ИИ-анализом категории и возможностью применить, отменить или скорректировать.
+
+🤖 **ИИ-функции:**
+Бот автоматически анализирует ваши сообщения и предлагает подходящую категорию расхода/дохода.
 
 📋 **Доступные команды:**
 /start - приветствие
 /accounts - показать все счета из ZenMoney
 /accounts_upd - обновить счета в Supabase
 /tags_upd - обновить теги в Supabase
+/ai_settings - настройки ИИ
+/ai_test - тестирование ИИ
 
 💡 **Как использовать:**
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
@@ -536,6 +607,103 @@ async function handleTagsUpdCommand(chatId, userName) {
       // Если loadingMessage не определена, отправляем новое сообщение
       bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
     }
+  }
+}
+
+// Обработчик команды /ai_settings
+async function handleAISettingsCommand(chatId, userName) {
+  try {
+    if (!supabaseClient) {
+      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+      return;
+    }
+
+    const settingsResult = await supabaseClient.getActiveAISettings();
+    
+    if (!settingsResult.success || !settingsResult.data) {
+      bot.sendMessage(chatId, `🤖 **Настройки ИИ не найдены**
+
+❌ Активная конфигурация ИИ не настроена.
+
+💡 Для настройки ИИ обратитесь к администратору.`);
+      return;
+    }
+
+    const aiSettings = settingsResult.data;
+    const status = aiSettings.is_active ? '✅ Активна' : '❌ Неактивна';
+    
+    const message = `🤖 **Текущие настройки ИИ:**
+
+🔧 **Провайдер:** ${aiSettings.provider || 'Не указан'}
+🤖 **Модель:** ${aiSettings.model || 'Не указана'}
+🔑 **API ключ:** ${aiSettings.api_key ? '✅ Настроен' : '❌ Не настроен'}
+📊 **Макс. токенов:** ${aiSettings.max_tokens || 'Не указано'}
+🌡️ **Температура:** ${aiSettings.temperature || 'Не указана'}
+⏱️ **Таймаут:** ${aiSettings.timeout || 'Не указан'} сек
+📝 **Описание:** ${aiSettings.description || 'Нет описания'}
+📅 **Обновлено:** ${aiSettings.updated_at ? new Date(aiSettings.updated_at).toLocaleString('ru-RU') : 'Неизвестно'}
+
+**Статус:** ${status}`;
+
+    bot.sendMessage(chatId, message)
+      .then(() => {
+        console.log(`Отправлены настройки ИИ пользователю ${userName}`);
+      })
+      .catch((error) => {
+        console.error('Ошибка при отправке настроек ИИ:', error);
+      });
+
+  } catch (error) {
+    console.error('Ошибка при получении настроек ИИ:', error);
+    bot.sendMessage(chatId, '❌ Ошибка при получении настроек ИИ. Попробуйте позже.');
+  }
+}
+
+// Обработчик команды /ai_test
+async function handleAITestCommand(chatId, userName) {
+  try {
+    if (!supabaseClient) {
+      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+      return;
+    }
+
+    const loadingMessage = await bot.sendMessage(chatId, '🧪 Тестируем ИИ-функционал...');
+
+    // Импортируем функцию тестирования
+    const { testAIFunctionality } = require('./src/ai/analyzer');
+    
+    const testResult = await testAIFunctionality(supabaseClient);
+    
+    if (testResult.success) {
+      const message = `✅ **Тест ИИ прошел успешно!**
+
+${testResult.message}
+
+🧪 **Результат тестового анализа:**
+${testResult.testAnalysis.success ? 
+  `🎯 Тег: ${testResult.testAnalysis.tag || 'Не найден'}
+📊 Уверенность: ${Math.round((testResult.testAnalysis.confidence || 0) * 100)}%` : 
+  `❌ Ошибка: ${testResult.testAnalysis.error}`
+}`;
+
+      bot.editMessageText(message, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+    } else {
+      bot.editMessageText(`❌ **Тест ИИ не прошел**
+
+Ошибка: ${testResult.error}
+
+💡 Проверьте настройки ИИ командой /ai_settings`, {
+        chat_id: chatId,
+        message_id: loadingMessage.message_id
+      });
+    }
+
+  } catch (error) {
+    console.error('Ошибка при тестировании ИИ:', error);
+    bot.sendMessage(chatId, '❌ Ошибка при тестировании ИИ. Попробуйте позже.');
   }
 }
 
