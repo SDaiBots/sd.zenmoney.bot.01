@@ -141,7 +141,7 @@ class ZenMoneyAPI {
       const requestData = {
         currentClientTimestamp: currentTimestamp,
         serverTimestamp: 0,
-        transaction: transactionData  // Используем 'transaction' вместо 'transactions'
+        transaction: [transactionData]  // Используем массив транзакций
       };
 
       console.log('📤 Отправляем запрос:', requestData);
