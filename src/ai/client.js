@@ -132,12 +132,14 @@ ${tagsList}
 2. Если есть НЕСКОЛЬКО подходящих тегов - верни их через запятую в порядке убывания вероятности
 3. НЕ предлагай теги, которых нет в списке выше
 4. Если подходящих тегов нет - верни "Неопределено"
-5. Ответ должен содержать только названия тегов через запятую, без дополнительных объяснений
+5. Если название тега содержит запятую - заключи его в кавычки
+6. Ответ должен содержать только названия тегов через запятую, без дополнительных объяснений
 
 Примеры ответов:
-- "Продукты" (один вариант)
-- "Продукты, Напитки" (несколько вариантов)
-- "Неопределено" (нет подходящих)
+- Продукты (один вариант)
+- Продукты, Напитки (несколько вариантов)
+- "Кафе, рестораны", Обеды (тег с запятой в кавычках)
+- Неопределено (нет подходящих)
 
 Ответ:`;
   }
@@ -160,17 +162,18 @@ ${tagsList}
       }
       
       // Разделяем ответ по запятым и очищаем каждый тег
-      const suggestedTags = cleanResponse.split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag.length > 0);
+      // Используем более умное разделение, учитывающее запятые в названиях тегов
+      const suggestedTags = this.parseTagList(cleanResponse);
       
       // Находим соответствующие теги в доступном списке
       const matchedTags = [];
+      const usedTagIds = new Set(); // Для избежания дубликатов
       
       for (const suggestedTag of suggestedTags) {
         const matchedTag = this.findMatchingTag(suggestedTag, availableTags);
-        if (matchedTag) {
+        if (matchedTag && !usedTagIds.has(matchedTag.id)) {
           matchedTags.push(matchedTag);
+          usedTagIds.add(matchedTag.id);
         }
       }
       
@@ -193,6 +196,40 @@ ${tagsList}
         confidence: 0
       };
     }
+  }
+  
+  /**
+   * Умное разделение списка тегов, учитывающее запятые в названиях
+   */
+  parseTagList(response) {
+    const tags = [];
+    let currentTag = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < response.length; i++) {
+      const char = response[i];
+      
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        // Запятая вне кавычек - разделитель тегов
+        const tag = currentTag.trim();
+        if (tag.length > 0) {
+          tags.push(tag);
+        }
+        currentTag = '';
+      } else {
+        currentTag += char;
+      }
+    }
+    
+    // Добавляем последний тег
+    const lastTag = currentTag.trim();
+    if (lastTag.length > 0) {
+      tags.push(lastTag);
+    }
+    
+    return tags;
   }
   
   /**
