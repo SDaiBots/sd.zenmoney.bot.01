@@ -11,14 +11,14 @@
   "id": "uuid-v4-format",
   "user": 1695996,
   "date": "2025-09-27",
-  "amount": 10000000,
+  "amount": 100000,
   "account": "3653215f-a4d0-4859-802f-c8068b8317a0",
   "incomeAccount": "3653215f-a4d0-4859-802f-c8068b8317a0",
   "outcomeAccount": "3653215f-a4d0-4859-802f-c8068b8317a0",
   "incomeInstrument": 10548,
   "outcomeInstrument": 10548,
   "income": 0,
-  "outcome": 10000000,
+  "outcome": 100000,
   "category": "88fcb329-8f73-4ad2-83a1-04790ed55b1a",
   "tag": ["88fcb329-8f73-4ad2-83a1-04790ed55b1a"],
   "merchant": null,
@@ -48,7 +48,7 @@
 | `id` | string | Уникальный ID транзакции в формате UUID v4 | `"8e351fab-4678-4cc7-8e41-9dc9be5f021b"` |
 | `user` | number | ID пользователя в ZenMoney | `1695996` |
 | `date` | string | Дата транзакции в формате YYYY-MM-DD | `"2025-09-27"` |
-| `amount` | number | Общая сумма транзакции в копейках | `10000000` (100,000 сумов) |
+| `amount` | number | Общая сумма транзакции в копейках | `100000` (100,000 сумов) |
 | `account` | string | ID основного счета | `"3653215f-a4d0-4859-802f-c8068b8317a0"` |
 
 ### Счета и валюты
@@ -65,7 +65,7 @@
 | Поле | Тип | Описание | Пример |
 |------|-----|----------|--------|
 | `income` | number | Сумма дохода в копейках (для расходов = 0) | `0` |
-| `outcome` | number | Сумма расхода в копейках | `10000000` |
+| `outcome` | number | Сумма расхода в копейках | `100000` |
 
 ### Категории и теги
 
@@ -129,6 +129,7 @@
 - Все суммы указываются в **копейках** (минимальных единицах валюты)
 - Для расходов: `income = 0`, `outcome = сумма`
 - Для доходов: `income = сумма`, `outcome = 0`
+- **ВАЖНО**: Не умножайте суммы на 100 - они уже должны быть в копейках!
 
 ### 4. Валюты
 - ID валюты получается из поля `instrument` счета
@@ -146,7 +147,7 @@
 ```json
 {
   "income": 0,
-  "outcome": 10000000,
+  "outcome": 100000,
   "incomeAccount": "account_id",
   "outcomeAccount": "account_id"
 }
@@ -155,7 +156,7 @@
 ### Доход
 ```json
 {
-  "income": 10000000,
+  "income": 100000,
   "outcome": 0,
   "incomeAccount": "account_id",
   "outcomeAccount": "account_id"
@@ -165,8 +166,8 @@
 ### Перевод между счетами
 ```json
 {
-  "income": 10000000,
-  "outcome": 10000000,
+  "income": 100000,
+  "outcome": 100000,
   "incomeAccount": "destination_account_id",
   "outcomeAccount": "source_account_id"
 }
