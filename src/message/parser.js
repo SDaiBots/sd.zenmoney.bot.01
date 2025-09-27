@@ -145,10 +145,11 @@ function formatAmount(amount) {
       return '0';
     }
     
-    // Форматируем число с разделителями тысяч
+    // Форматируем число с разделителями тысяч БЕЗ валюты
     const formattedAmount = new Intl.NumberFormat('ru-RU', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 2,
+      style: 'decimal'  // Явно указываем, что НЕ нужна валюта
     }).format(amount);
     
     return formattedAmount;
