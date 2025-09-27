@@ -1271,13 +1271,35 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     // Получаем валюту для нового счета
     console.log(`💱 Получаем валюту для счета: ${accountName}`);
     const currencyResult = await supabaseClient.getAccountByName(accountName);
+    console.log(`💱 Результат поиска счета:`, currencyResult);
+    
     let newCurrency = 'RUB'; // По умолчанию
     
     if (currencyResult.success && currencyResult.data) {
+      console.log(`💱 Найден счет в базе данных:`, currencyResult.data);
       const currencyData = await supabaseClient.getCurrencyByInstrumentId(currencyResult.data.instrument_id);
+      console.log(`💱 Результат получения валюты:`, currencyData);
+      
       if (currencyData.success) {
         newCurrency = currencyData.currency;
         console.log(`💱 Найдена валюта для счета ${accountName}: ${newCurrency}`);
+      } else {
+        console.log(`⚠️ Не удалось получить валюту для instrument_id ${currencyResult.data.instrument_id}`);
+      }
+    } else {
+      console.log(`⚠️ Счет ${accountName} не найден в базе данных, используем валюту по умолчанию: ${newCurrency}`);
+      
+      // Попробуем определить валюту по названию счета как fallback
+      const lowerAccountName = accountName.toLowerCase();
+      if (lowerAccountName.includes('uzs') || lowerAccountName.includes('сом')) {
+        newCurrency = 'UZS';
+        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
+      } else if (lowerAccountName.includes('usd') || lowerAccountName.includes('доллар')) {
+        newCurrency = 'USD';
+        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
+      } else if (lowerAccountName.includes('eur') || lowerAccountName.includes('евро')) {
+        newCurrency = 'EUR';
+        console.log(`💱 Определена валюта по названию счета: ${newCurrency}`);
       }
     }
     

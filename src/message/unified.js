@@ -242,11 +242,16 @@ function updateMessageWithNewCurrency(currentMessageText, newCurrency) {
     const amountMatch = currentMessageText.match(/💲 (.+)/);
     if (amountMatch) {
       const currentAmountText = amountMatch[1];
-      // Извлекаем только число из текущей суммы
-      const amountMatch2 = currentAmountText.match(/([\d\s,]+)/);
+      console.log(`💰 Текущий текст суммы: "${currentAmountText}"`);
+      
+      // Извлекаем только число из текущей суммы (учитываем пробелы, запятые, точки)
+      const amountMatch2 = currentAmountText.match(/([\d\s,\.]+)/);
       if (amountMatch2) {
         const amount = amountMatch2[1].trim();
+        console.log(`💰 Извлеченная сумма: "${amount}"`);
+        
         const newAmountText = `${amount} ${newCurrency}`;
+        console.log(`💰 Новая сумма с валютой: "${newAmountText}"`);
         
         // Заменяем сумму с валютой в сообщении
         const updatedMessage = currentMessageText.replace(
@@ -258,7 +263,11 @@ function updateMessageWithNewCurrency(currentMessageText, newCurrency) {
         console.log(`✅ Валюта обновлена: ${updatedMessage !== currentMessageText ? 'ДА' : 'НЕТ'}`);
         
         return updatedMessage;
+      } else {
+        console.log(`⚠️ Не удалось извлечь число из суммы: "${currentAmountText}"`);
       }
+    } else {
+      console.log(`⚠️ Не удалось найти строку с суммой (💲) в сообщении`);
     }
     
     console.log(`⚠️ Не удалось найти сумму для обновления валюты`);
