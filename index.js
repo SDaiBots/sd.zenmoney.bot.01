@@ -90,9 +90,9 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
         const defaultCurrencyResult = await supabaseClient.getSetting('default_currency');
         
         settings = {
-          default_card: defaultCardResult.success ? defaultCardResult.value : '',
-          default_cash: defaultCashResult.success ? defaultCashResult.value : '',
-          default_currency: defaultCurrencyResult.success ? defaultCurrencyResult.value : 'RUB'
+          default_card: defaultCardResult.success && defaultCardResult.value ? defaultCardResult.value : 'Карта',
+          default_cash: defaultCashResult.success && defaultCashResult.value ? defaultCashResult.value : 'Бумажник',
+          default_currency: defaultCurrencyResult.success && defaultCurrencyResult.value ? defaultCurrencyResult.value : 'RUB'
         };
       } catch (settingsError) {
         console.warn('⚠️ Ошибка при получении настроек:', settingsError.message);
@@ -1114,9 +1114,33 @@ async function handleUnifiedCancel(chatId, messageId, originalMessage) {
     const structure = structureMatch ? originalMessage : originalMessage;
     
     // Добавляем зачеркивание ко всем строкам структуры и экранируем
-    const strikethroughStructure = structure.split('\n').map(line => 
-      line.trim() ? `~~${escapeMarkdownV2(line.trim())}~~` : line
-    ).join('\n');
+    const strikethroughStructure = structure.split('\n').map(line => {
+      if (!line.trim()) return line;
+      
+      // Экранируем специальные символы MarkdownV2
+      const escapedLine = line.trim()
+        .replace(/\\/g, '\\\\')
+        .replace(/\*/g, '\\*')
+        .replace(/_/g, '\\_')
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .replace(/~/g, '\\~')
+        .replace(/`/g, '\\`')
+        .replace(/>/g, '\\>')
+        .replace(/#/g, '\\#')
+        .replace(/\+/g, '\\+')
+        .replace(/-/g, '\\-')
+        .replace(/=/g, '\\=')
+        .replace(/\|/g, '\\|')
+        .replace(/\{/g, '\\{')
+        .replace(/\}/g, '\\}')
+        .replace(/\./g, '\\.')
+        .replace(/!/g, '\\!');
+      
+      return `~~${escapedLine}~~`;
+    }).join('\n');
     
     // Формируем новое сообщение
     const newMessage = `❌ Запись отменена
@@ -1162,22 +1186,54 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     
     // Получаем значение настройки из Supabase
     const settingResult = await supabaseClient.getSetting(settingName);
-    const accountName = settingResult.success && settingResult.value ? settingResult.value : 'Бумажник';
+    let accountName;
+    
+    if (settingName === 'default_card') {
+      accountName = settingResult.success && settingResult.value ? settingResult.value : 'Карта';
+    } else if (settingName === 'default_cash') {
+      accountName = settingResult.success && settingResult.value ? settingResult.value : 'Бумажник';
+    } else {
+      accountName = 'Бумажник';
+    }
     
     // Обновляем сообщение с новым счетом
     const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
     
     // Получаем текущие данные транзакции для пересоздания клавиатуры
-    // Пока используем простую клавиатуру
-    const keyboard = [
-      [
-        { text: '💳', callback_data: 'unified_account_card' },
-        { text: '💵', callback_data: 'unified_account_cash' },
-        { text: '✅', callback_data: 'unified_apply' },
-        { text: '❌', callback_data: 'unified_cancel' },
-        { text: '✏️', callback_data: 'unified_edit' }
-      ]
+    // Получаем все доступные теги для создания кнопок
+    const tagsResult = await supabaseClient.getAllTagsWithParents();
+    const availableTags = tagsResult.success && tagsResult.data ? tagsResult.data.filter(tag => tag.parent_id !== null) : [];
+    
+    const keyboard = [];
+    
+    // Добавляем кнопки тегов, если есть несколько вариантов
+    if (availableTags.length > 1) {
+      const tagButtons = [];
+      // Берем максимум 3 тега для кнопок
+      const tagsForButtons = availableTags.slice(0, 3);
+      
+      for (const tag of tagsForButtons) {
+        tagButtons.push({
+          text: tag.title,
+          callback_data: `unified_tag_${tag.id}`
+        });
+      }
+      
+      if (tagButtons.length > 0) {
+        keyboard.push(tagButtons);
+      }
+    }
+    
+    // Основные кнопки управления
+    const mainButtons = [
+      { text: '💳', callback_data: 'unified_account_card' },
+      { text: '💵', callback_data: 'unified_account_cash' },
+      { text: '✅', callback_data: 'unified_apply' },
+      { text: '❌', callback_data: 'unified_cancel' },
+      { text: '✏️', callback_data: 'unified_edit' }
     ];
+    
+    keyboard.push(mainButtons);
     
     bot.editMessageText(updatedMessage, {
       chat_id: chatId,
@@ -1222,17 +1278,40 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
     // Обновляем сообщение с новым тегом
     const updatedMessage = updateMessageWithNewTag(originalMessage, selectedTag.title);
     
-    // Получаем текущие данные транзакции для пересоздания клавиатуры
-    // Пока используем простую клавиатуру
-    const keyboard = [
-      [
-        { text: '💳', callback_data: 'unified_account_card' },
-        { text: '💵', callback_data: 'unified_account_cash' },
-        { text: '✅', callback_data: 'unified_apply' },
-        { text: '❌', callback_data: 'unified_cancel' },
-        { text: '✏️', callback_data: 'unified_edit' }
-      ]
+    // Получаем все доступные теги для создания кнопок
+    const availableTags = tagsResult.data.filter(tag => tag.parent_id !== null);
+    
+    // Создаем клавиатуру с кнопками тегов (если есть несколько вариантов)
+    const keyboard = [];
+    
+    // Добавляем кнопки тегов, если есть несколько вариантов
+    if (availableTags.length > 1) {
+      const tagButtons = [];
+      // Берем максимум 3 тега для кнопок
+      const tagsForButtons = availableTags.slice(0, 3);
+      
+      for (const tag of tagsForButtons) {
+        tagButtons.push({
+          text: tag.title,
+          callback_data: `unified_tag_${tag.id}`
+        });
+      }
+      
+      if (tagButtons.length > 0) {
+        keyboard.push(tagButtons);
+      }
+    }
+    
+    // Основные кнопки управления
+    const mainButtons = [
+      { text: '💳', callback_data: 'unified_account_card' },
+      { text: '💵', callback_data: 'unified_account_cash' },
+      { text: '✅', callback_data: 'unified_apply' },
+      { text: '❌', callback_data: 'unified_cancel' },
+      { text: '✏️', callback_data: 'unified_edit' }
     ];
+    
+    keyboard.push(mainButtons);
 
     // Обновляем сообщение с результатом
     bot.editMessageText(updatedMessage, {
