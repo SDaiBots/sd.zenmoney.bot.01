@@ -38,12 +38,12 @@ const messageCounters = new Map();
 const aiTagsStorage = new Map();
 
 // Обработчик входящих сообщений от Telegram
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
   try {
     const update = req.body;
     
     if (update.message) {
-      handleMessage(update.message);
+      await handleMessage(update.message);
     }
     
     if (update.callback_query) {
@@ -57,8 +57,47 @@ app.post('/webhook', (req, res) => {
   }
 });
 
+// Функция проверки разрешенного пользователя
+async function isUserAllowed(userId, username) {
+  try {
+    if (!supabaseClient) {
+      console.warn('⚠️ Supabase клиент не инициализирован, разрешаем всем пользователям');
+      return true;
+    }
+
+    // Получаем настройку 'user' из Supabase
+    const userSettingResult = await supabaseClient.getSetting('user');
+    
+    if (!userSettingResult.success || !userSettingResult.value) {
+      console.warn('⚠️ Настройка "user" не найдена или пуста, разрешаем всем пользователям');
+      return true;
+    }
+
+    const allowedUser = userSettingResult.value.trim();
+    const currentUserId = userId.toString();
+    const currentUsername = username || '';
+
+    // Проверяем по ID пользователя или username
+    const isAllowed = currentUserId === allowedUser || currentUsername === allowedUser;
+    
+    if (!isAllowed) {
+      console.log(`🚫 Доступ запрещен для пользователя: ID=${currentUserId}, username=${currentUsername}`);
+      console.log(`🔒 Разрешенный пользователь: ${allowedUser}`);
+    } else {
+      console.log(`✅ Доступ разрешен для пользователя: ID=${currentUserId}, username=${currentUsername}`);
+    }
+
+    return isAllowed;
+
+  } catch (error) {
+    console.error('❌ Ошибка при проверке пользователя:', error.message);
+    // В случае ошибки разрешаем доступ для безопасности
+    return true;
+  }
+}
+
 // Функция обработки сообщений
-function handleMessage(message) {
+async function handleMessage(message) {
   const chatId = message.chat.id;
   const messageId = message.message_id;
   const text = message.text;
@@ -68,6 +107,14 @@ function handleMessage(message) {
   const userName = user.first_name || user.username || 'Неизвестный пользователь';
   const userLastName = user.last_name ? ` ${user.last_name}` : '';
   const fullUserName = `${userName}${userLastName}`;
+  
+  // Проверяем, разрешен ли пользователь
+  const isAllowed = await isUserAllowed(user.id, user.username);
+  
+  if (!isAllowed) {
+    console.log(`🚫 Игнорируем сообщение от неразрешенного пользователя: ${fullUserName} (ID: ${user.id})`);
+    return;
+  }
   
   // Обработка команд
   if (text && text.startsWith('/')) {
