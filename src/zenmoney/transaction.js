@@ -55,7 +55,7 @@ async function createZenMoneyTransactionStructure(transactionData, supabaseClien
       date: new Date().toISOString().split('T')[0], // Текущая дата в формате YYYY-MM-DD
       amount: Math.round(transactionData.amount * 100), // Сумма в копейках
       account: accountId, // ID счета
-      tag: tagId, // ID тега
+      category: tagId, // ID тега (используем 'category' вместо 'tag')
       comment: transactionData.comment, // Комментарий
       created: Math.floor(Date.now() / 1000), // Unix timestamp
       changed: Math.floor(Date.now() / 1000) // Unix timestamp

@@ -133,16 +133,23 @@ class ZenMoneyAPI {
   async createTransaction(transactionData) {
     try {
       console.log('🔄 Создаем транзакцию в ZenMoney...');
+      console.log('📊 Данные транзакции:', transactionData);
       
       const currentTimestamp = Math.floor(Date.now() / 1000);
       
-      const response = await this.client.post('/v8/diff', {
+      // Правильный формат для создания транзакции в ZenMoney API
+      const requestData = {
         currentClientTimestamp: currentTimestamp,
         serverTimestamp: 0,
-        transactions: [transactionData]
-      });
+        transaction: transactionData  // Используем 'transaction' вместо 'transactions'
+      };
+
+      console.log('📤 Отправляем запрос:', requestData);
+      
+      const response = await this.client.post('/v8/diff', requestData);
 
       console.log('✅ Транзакция создана успешно');
+      console.log('📥 Ответ от ZenMoney:', response.data);
       return response.data;
       
     } catch (error) {
