@@ -102,7 +102,7 @@ async function transcribeVoice(audioBuffer) {
 }
 
 // Функция обработки голосового сообщения
-async function handleVoiceMessage(chatId, voice, user, fullUserName, messageId) {
+async function handleVoiceMessage(chatId, voice, user, fullUserName, messageId, currentUser = null) {
   try {
     console.log(`🎤 Получено голосовое сообщение от пользователя ${fullUserName}`);
     
@@ -134,7 +134,7 @@ async function handleVoiceMessage(chatId, voice, user, fullUserName, messageId) 
     });
     
     // Обрабатываем транскрибированный текст как голосовое сообщение
-    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true, messageId);
+    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true, messageId, currentUser);
     
   } catch (error) {
     console.error('❌ Ошибка при обработке голосового сообщения:', error.message);
@@ -177,7 +177,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Функция проверки разрешенного пользователя
+// Функция проверки разрешенного пользователя (устаревшая, используется для совместимости)
 async function isUserAllowed(userId, username) {
   try {
     if (!supabaseClient) {
@@ -216,6 +216,174 @@ async function isUserAllowed(userId, username) {
   }
 }
 
+// =====================================================
+// МНОГОПОЛЬЗОВАТЕЛЬСКИЕ ФУНКЦИИ
+// =====================================================
+
+// Функция проверки авторизации пользователя
+async function isUserAuthorized(telegramId, username) {
+  try {
+    if (!supabaseClient) {
+      console.warn('⚠️ Supabase клиент не инициализирован');
+      return { authorized: false, user: null };
+    }
+
+    const authResult = await supabaseClient.isUserAuthorized(telegramId, username);
+    return authResult;
+
+  } catch (error) {
+    console.error('❌ Ошибка при проверке авторизации:', error.message);
+    return { authorized: false, user: null };
+  }
+}
+
+// Функция валидации токена ZenMoney
+async function validateZenMoneyToken(token) {
+  try {
+    if (!token || token.trim() === '') {
+      return { valid: false, error: 'Токен не может быть пустым' };
+    }
+
+    // Тестовый запрос к ZenMoney API
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: Math.floor(Date.now() / 1000),
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 10000
+    });
+    
+    return { valid: true, data: response.data };
+  } catch (error) {
+    console.error('❌ Ошибка валидации токена:', error.message);
+    
+    if (error.response?.status === 401) {
+      return { valid: false, error: 'Неверный токен' };
+    } else if (error.response?.status === 403) {
+      return { valid: false, error: 'Токен заблокирован' };
+    } else if (error.code === 'ECONNABORTED') {
+      return { valid: false, error: 'Таймаут подключения' };
+    } else {
+      return { valid: false, error: 'Ошибка подключения к ZenMoney API' };
+    }
+  }
+}
+
+// Функция загрузки тегов для пользователя
+async function loadUserTags(userId, token) {
+  try {
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: Math.floor(Date.now() / 1000),
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 30000
+    });
+
+    const tags = response.data.tag || {};
+    const tagCount = Object.keys(tags).length;
+    
+    if (tagCount === 0) {
+      return { success: true, count: 0, message: 'Теги не найдены в ZenMoney' };
+    }
+
+    // Очищаем старые теги пользователя
+    await supabaseClient.clearUserTags(userId);
+    
+    // Преобразуем теги в массив для вставки
+    const tagsArray = Object.entries(tags).map(([tagId, tagData]) => ({
+      id: tagId,
+      title: tagData.title,
+      parent_id: tagData.parent || null,
+      color: tagData.color || null,
+      icon: tagData.icon || null,
+      budget_income: tagData.budget_income || false,
+      budget_outcome: tagData.budget_outcome || false,
+      required: tagData.required || false,
+      show_income: tagData.show_income || false,
+      show_outcome: tagData.show_outcome || false,
+      created_at: new Date().toISOString()
+    }));
+
+    // Сохраняем теги в базу данных
+    const insertResult = await supabaseClient.insertUserTags(userId, tagsArray);
+    
+    if (!insertResult.success) {
+      throw new Error(insertResult.error);
+    }
+    
+    return { success: true, count: tagCount };
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке тегов:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// Функция загрузки счетов для пользователя
+async function loadUserAccounts(userId, token) {
+  try {
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: Math.floor(Date.now() / 1000),
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 30000
+    });
+
+    const accounts = response.data.account || {};
+    const accountCount = Object.keys(accounts).length;
+    
+    if (accountCount === 0) {
+      return { success: true, count: 0, message: 'Счета не найдены в ZenMoney' };
+    }
+
+    // Очищаем старые счета пользователя
+    await supabaseClient.clearUserAccounts(userId);
+    
+    // Преобразуем счета в массив для вставки
+    const accountsArray = Object.entries(accounts).map(([accountId, accountData]) => ({
+      id: accountId,
+      user_id: accountData.user,
+      instrument_id: accountData.instrument,
+      type: accountData.type,
+      title: accountData.title,
+      balance: accountData.balance || 0,
+      start_balance: accountData.start_balance || 0,
+      credit_limit: accountData.credit_limit || 0,
+      in_balance: accountData.in_balance !== false,
+      savings: accountData.savings || false,
+      enable_correction: accountData.enable_correction !== false,
+      enable_sms: accountData.enable_sms !== false,
+      archive: accountData.archive || false,
+      created_at: new Date().toISOString()
+    }));
+
+    // Сохраняем счета в базу данных
+    const insertResult = await supabaseClient.insertUserAccounts(userId, accountsArray);
+    
+    if (!insertResult.success) {
+      throw new Error(insertResult.error);
+    }
+    
+    return { success: true, count: accountCount };
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке счетов:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // Функция обработки сообщений
 async function handleMessage(message) {
   const chatId = message.chat.id;
@@ -229,41 +397,83 @@ async function handleMessage(message) {
   const userLastName = user.last_name ? ` ${user.last_name}` : '';
   const fullUserName = `${userName}${userLastName}`;
   
-  // Проверяем, разрешен ли пользователь
-  const isAllowed = await isUserAllowed(user.id, user.username);
+  // Проверяем авторизацию пользователя
+  const authResult = await isUserAuthorized(user.id, user.username);
   
-  if (!isAllowed) {
-    console.log(`🚫 Игнорируем сообщение от неразрешенного пользователя: ${fullUserName} (ID: ${user.id})`);
+  if (!authResult.authorized) {
+    console.log(`🚫 Игнорируем сообщение от неавторизованного пользователя: ${fullUserName} (ID: ${user.id})`);
     return;
   }
+
+  const currentUser = authResult.user;
   
   // Обработка команд
   if (text && text.startsWith('/')) {
-    handleCommand(message);
+    handleCommand(message, currentUser);
+    return;
+  }
+  
+  // Обработка токена ZenMoney (если пользователь не имеет токена)
+  if (!currentUser.zenmoney_token && text && !text.startsWith('/')) {
+    await handleTokenInput(chatId, text, currentUser, messageId);
     return;
   }
   
   // Обработка голосовых сообщений
   if (voice) {
-    await handleVoiceMessage(chatId, voice, user, fullUserName, messageId);
+    await handleVoiceMessage(chatId, voice, user, fullUserName, messageId, currentUser);
     return;
   }
   
   // Обработка обычных сообщений - показываем структуру транзакции с ИИ-анализом
   if (text) {
-    handleTransactionWithAI(chatId, text, user, fullUserName, false, messageId);
+    handleTransactionWithAI(chatId, text, user, fullUserName, false, messageId, currentUser);
+  }
+}
+
+// Функция обработки ввода токена
+async function handleTokenInput(chatId, text, user, messageId) {
+  try {
+    const token = text.trim();
+    
+    // Валидируем токен
+    const validationResult = await validateZenMoneyToken(token);
+    
+    if (!validationResult.valid) {
+      await bot.sendMessage(chatId, `❌ Токен недействителен или не работает.\n\n${validationResult.error}\n\nПроверьте правильность токена и попробуйте еще раз.`, {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Обновляем токен пользователя
+    const updateResult = await supabaseClient.updateUserZenMoneyToken(user.id, token);
+    
+    if (!updateResult.success) {
+      throw new Error(updateResult.error);
+    }
+    
+    // Показываем опции настройки
+    await showSetupOptions(chatId, updateResult.data, messageId);
+    
+  } catch (error) {
+    console.error('❌ Ошибка при обработке токена:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при сохранении токена. Попробуйте еще раз.', {
+      reply_to_message_id: messageId
+    });
   }
 }
 
 // Функция обработки транзакции с ИИ-анализом
-async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false, replyToMessageId = null) {
+async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false, replyToMessageId = null, currentUser = null) {
   try {
     // Получаем настройки из Supabase
     let settings = {};
-    if (supabaseClient) {
+    if (supabaseClient && currentUser) {
       try {
-        const defaultCardResult = await supabaseClient.getSetting('default_card');
-        const defaultCashResult = await supabaseClient.getSetting('default_cash');
+        // Используем пользовательские настройки, если доступны
+        const defaultCardResult = await supabaseClient.getUserSetting(currentUser.id, 'default_card');
+        const defaultCashResult = await supabaseClient.getUserSetting(currentUser.id, 'default_cash');
         
         settings = {
           default_card: (defaultCardResult.success && defaultCardResult.value && defaultCardResult.value.trim() !== '') 
@@ -273,9 +483,34 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoice
             ? defaultCashResult.value.trim() 
             : 'Бумажник'
         };
-      } catch (settingsError) {
-        console.warn('⚠️ Ошибка при получении настроек:', settingsError.message);
+      } catch (error) {
+        console.warn('⚠️ Ошибка при получении пользовательских настроек:', error.message);
+        // Fallback на глобальные настройки
+        try {
+          const defaultCardResult = await supabaseClient.getSetting('default_card');
+          const defaultCashResult = await supabaseClient.getSetting('default_cash');
+          
+          settings = {
+            default_card: (defaultCardResult.success && defaultCardResult.value && defaultCardResult.value.trim() !== '') 
+              ? defaultCardResult.value.trim() 
+              : 'Карта',
+            default_cash: (defaultCashResult.success && defaultCashResult.value && defaultCashResult.value.trim() !== '') 
+              ? defaultCashResult.value.trim() 
+              : 'Бумажник'
+          };
+        } catch (fallbackError) {
+          console.warn('⚠️ Ошибка при получении глобальных настроек:', fallbackError.message);
+          settings = {
+            default_card: 'Карта',
+            default_cash: 'Бумажник'
+          };
+        }
       }
+    } else {
+      settings = {
+        default_card: 'Карта',
+        default_cash: 'Бумажник'
+      };
     }
     
     // Запускаем ИИ-анализ
@@ -384,7 +619,7 @@ function escapeMarkdownForCommands(text) {
 }
 
 // Функция обработки команд
-function handleCommand(message) {
+function handleCommand(message, currentUser = null) {
   const chatId = message.chat.id;
   const messageId = message.message_id;
   const text = message.text;
@@ -393,22 +628,25 @@ function handleCommand(message) {
   
   switch (text) {
     case '/start':
-      handleStartCommand(chatId, userName, messageId);
+      handleStartCommand(chatId, user, messageId);
       break;
     case '/accounts':
-      handleAccountsCommand(chatId, userName, messageId);
+      handleAccountsCommand(chatId, userName, messageId, currentUser);
       break;
     case '/accounts_upd':
-      handleAccountsUpdCommand(chatId, userName, messageId);
+      handleAccountsUpdCommand(chatId, userName, messageId, currentUser);
       break;
     case '/tags_upd':
-      handleTagsUpdCommand(chatId, userName, messageId);
+      handleTagsUpdCommand(chatId, userName, messageId, currentUser);
       break;
     case '/ai_settings':
       handleAISettingsCommand(chatId, userName, messageId);
       break;
     case '/ai_test':
       handleAITestCommand(chatId, userName, messageId);
+      break;
+    case '/admin_add_user':
+      handleAdminAddUserCommand(chatId, user, messageId);
       break;
     default:
       bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.', {
@@ -418,7 +656,112 @@ function handleCommand(message) {
 }
 
 // Обработчик команды /start
-function handleStartCommand(chatId, userName, messageId) {
+async function handleStartCommand(chatId, user, messageId) {
+  try {
+    const userName = user.first_name || user.username || 'Неизвестный пользователь';
+    
+    // Проверяем авторизацию пользователя
+    const authResult = await isUserAuthorized(user.id, user.username);
+    
+    if (!authResult.authorized) {
+      console.log(`🚫 Пользователь не авторизован: ${userName} (ID: ${user.id})`);
+      return;
+    }
+    
+    const currentUser = authResult.user;
+    
+    // Проверяем наличие токена ZenMoney
+    if (!currentUser.zenmoney_token) {
+      await requestZenMoneyToken(chatId, currentUser, messageId);
+      return;
+    }
+    
+    // Проверяем, загружены ли теги и счета
+    const tagsResult = await supabaseClient.getUserTags(currentUser.id);
+    const accountsResult = await supabaseClient.getUserAccounts(currentUser.id);
+    
+    const hasTags = tagsResult.success && tagsResult.data && tagsResult.data.length > 0;
+    const hasAccounts = accountsResult.success && accountsResult.data && accountsResult.data.length > 0;
+    
+    if (!hasTags || !hasAccounts) {
+      await showSetupOptions(chatId, currentUser, messageId, hasTags, hasAccounts);
+      return;
+    }
+    
+    // Показываем приветствие для настроенного пользователя
+    await showWelcomeMessage(chatId, currentUser, messageId);
+    
+  } catch (error) {
+    console.error('❌ Ошибка в handleStartCommand:', error.message);
+    bot.sendMessage(chatId, '❌ Произошла ошибка при обработке команды /start', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// Функция запроса токена ZenMoney
+async function requestZenMoneyToken(chatId, user, messageId) {
+  const message = `🔑 Для работы с ботом необходим токен ZenMoney API.
+
+Отправьте ваш токен ZenMoney для настройки бота.
+
+💡 *Как получить токен:*
+1. Войдите в ZenMoney
+2. Перейдите в Настройки → API
+3. Создайте новый токен
+4. Скопируйте и отправьте его боту`;
+
+  await bot.sendMessage(chatId, message, {
+    parse_mode: 'Markdown',
+    reply_to_message_id: messageId
+  });
+}
+
+// Функция показа опций настройки
+async function showSetupOptions(chatId, user, messageId, hasTags = false, hasAccounts = false) {
+  let message = `✅ Токен успешно сохранен!
+
+Для завершения настройки выполните следующие действия:`;
+
+  if (!hasTags) {
+    message += `\n\n📋 Загрузить статьи (теги) - синхронизация категорий`;
+  } else {
+    message += `\n\n✅ Статьи уже загружены`;
+  }
+
+  if (!hasAccounts) {
+    message += `\n💳 Загрузить счета - синхронизация счетов`;
+  } else {
+    message += `\n✅ Счета уже загружены`;
+  }
+
+  message += `\n\n➡️ Перейти дальше - пропустить настройку`;
+
+  const keyboard = [];
+  
+  if (!hasTags) {
+    keyboard.push([{ text: '📋 Загрузить статьи', callback_data: `load_tags_${user.id}` }]);
+  }
+  
+  if (!hasAccounts) {
+    keyboard.push([{ text: '💳 Загрузить счета', callback_data: `load_accounts_${user.id}` }]);
+  }
+  
+  keyboard.push([{ text: '➡️ Перейти дальше', callback_data: `skip_setup_${user.id}` }]);
+
+  await bot.sendMessage(chatId, message, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: keyboard
+    },
+    reply_to_message_id: messageId
+  });
+}
+
+// Функция показа приветствия
+async function showWelcomeMessage(chatId, user, messageId) {
+  const userName = user.first_name || user.username || 'Пользователь';
+  
   const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${escapeMarkdown(userName)}!
 
 💰 *Основной функционал:*
@@ -438,15 +781,16 @@ function handleStartCommand(chatId, userName, messageId) {
 💡 *Как использовать:*
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
   
-  bot.sendMessage(chatId, welcomeMessage, { 
+  await bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'Markdown',
     reply_to_message_id: messageId
   });
 }
 
 // Обработчик команды /accounts
-async function handleAccountsCommand(chatId, userName, messageId) {
-  const zenMoneyToken = process.env.ZENMONEY_TOKEN;
+async function handleAccountsCommand(chatId, userName, messageId, currentUser = null) {
+  // Используем токен пользователя, если доступен
+  const zenMoneyToken = currentUser?.zenmoney_token || process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
     bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
@@ -555,8 +899,9 @@ function formatAccountDetails(account, index, total) {
 }
 
 // Обработчик команды /accounts_upd
-async function handleAccountsUpdCommand(chatId, userName, messageId) {
-  const zenMoneyToken = process.env.ZENMONEY_TOKEN;
+async function handleAccountsUpdCommand(chatId, userName, messageId, currentUser = null) {
+  // Используем токен пользователя, если доступен
+  const zenMoneyToken = currentUser?.zenmoney_token || process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
     bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
@@ -718,8 +1063,9 @@ async function handleAccountsUpdCommand(chatId, userName, messageId) {
 }
 
 // Обработчик команды /tags_upd
-async function handleTagsUpdCommand(chatId, userName, messageId) {
-  const zenMoneyToken = process.env.ZENMONEY_TOKEN;
+async function handleTagsUpdCommand(chatId, userName, messageId, currentUser = null) {
+  // Используем токен пользователя, если доступен
+  const zenMoneyToken = currentUser?.zenmoney_token || process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
     bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
@@ -994,6 +1340,15 @@ async function handleCallbackQuery(callbackQuery) {
   // Отвечаем на callback query
   bot.answerCallbackQuery(callbackQuery.id);
   
+  // Проверяем авторизацию пользователя
+  const authResult = await isUserAuthorized(user.id, user.username);
+  if (!authResult.authorized) {
+    console.log(`🚫 Неавторизованный пользователь пытается использовать callback: ${user.id}`);
+    return;
+  }
+  
+  const currentUser = authResult.user;
+  
   // Обработка различных действий
   switch (data) {
     // Обработчики для единого сообщения
@@ -1026,12 +1381,280 @@ async function handleCallbackQuery(callbackQuery) {
       if (data.startsWith('unified_tag_')) {
         const tagId = data.replace('unified_tag_', '');
         await handleUnifiedTagSelection(chatId, messageId, tagId, callbackQuery.message.text);
+      } 
+      // Обработка callback для настройки пользователя
+      else if (data.startsWith('load_tags_')) {
+        const userId = parseInt(data.replace('load_tags_', ''));
+        await handleLoadTags(chatId, userId, messageId);
+      } else if (data.startsWith('load_accounts_')) {
+        const userId = parseInt(data.replace('load_accounts_', ''));
+        await handleLoadAccounts(chatId, userId, messageId);
+      } else if (data.startsWith('skip_setup_')) {
+        const userId = parseInt(data.replace('skip_setup_', ''));
+        await handleSkipSetup(chatId, userId, messageId);
       } else {
         console.log(`Неизвестный callback data: ${data}`);
       }
   }
 }
 
+
+// ===== ОБРАБОТЧИКИ ДЛЯ НАСТРОЙКИ ПОЛЬЗОВАТЕЛЕЙ =====
+
+// Обработчик загрузки тегов
+async function handleLoadTags(chatId, userId, messageId) {
+  try {
+    // Получаем пользователя
+    const userResult = await supabaseClient.getUserByTelegramId(userId);
+    if (!userResult.success || !userResult.data) {
+      throw new Error('Пользователь не найден');
+    }
+    
+    const user = userResult.data;
+    
+    if (!user.zenmoney_token) {
+      await bot.sendMessage(chatId, '❌ Токен ZenMoney не настроен', {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Отправляем сообщение о начале загрузки
+    const loadingMessage = await bot.sendMessage(chatId, '🔄 Загружаем статьи из ZenMoney...', {
+      reply_to_message_id: messageId
+    });
+    
+    // Загружаем теги
+    const loadResult = await loadUserTags(user.id, user.zenmoney_token);
+    
+    // Удаляем сообщение о загрузке
+    await bot.deleteMessage(chatId, loadingMessage.message_id);
+    
+    if (!loadResult.success) {
+      await bot.sendMessage(chatId, `❌ Ошибка при загрузке статей: ${loadResult.error}`, {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Показываем результат
+    let message = `📋 Статьи загружены успешно!\n\nЗагружено статей: ${loadResult.count}`;
+    
+    if (loadResult.count === 0) {
+      message = `📋 Статьи не найдены в ZenMoney`;
+    }
+    
+    await bot.sendMessage(chatId, message, {
+      reply_to_message_id: messageId
+    });
+    
+    // Проверяем, нужно ли показать опции настройки снова
+    const accountsResult = await supabaseClient.getUserAccounts(user.id);
+    const hasAccounts = accountsResult.success && accountsResult.data && accountsResult.data.length > 0;
+    
+    if (!hasAccounts) {
+      await showSetupOptions(chatId, user, messageId, true, false);
+    } else {
+      await showSetupComplete(chatId, user, messageId);
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке тегов:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке статей', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// Обработчик загрузки счетов
+async function handleLoadAccounts(chatId, userId, messageId) {
+  try {
+    // Получаем пользователя
+    const userResult = await supabaseClient.getUserByTelegramId(userId);
+    if (!userResult.success || !userResult.data) {
+      throw new Error('Пользователь не найден');
+    }
+    
+    const user = userResult.data;
+    
+    if (!user.zenmoney_token) {
+      await bot.sendMessage(chatId, '❌ Токен ZenMoney не настроен', {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Отправляем сообщение о начале загрузки
+    const loadingMessage = await bot.sendMessage(chatId, '🔄 Загружаем счета из ZenMoney...', {
+      reply_to_message_id: messageId
+    });
+    
+    // Загружаем счета
+    const loadResult = await loadUserAccounts(user.id, user.zenmoney_token);
+    
+    // Удаляем сообщение о загрузке
+    await bot.deleteMessage(chatId, loadingMessage.message_id);
+    
+    if (!loadResult.success) {
+      await bot.sendMessage(chatId, `❌ Ошибка при загрузке счетов: ${loadResult.error}`, {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Показываем результат
+    let message = `💳 Счета загружены успешно!\n\nЗагружено счетов: ${loadResult.count}`;
+    
+    if (loadResult.count === 0) {
+      message = `💳 Счета не найдены в ZenMoney`;
+    }
+    
+    await bot.sendMessage(chatId, message, {
+      reply_to_message_id: messageId
+    });
+    
+    // Проверяем, нужно ли показать опции настройки снова
+    const tagsResult = await supabaseClient.getUserTags(user.id);
+    const hasTags = tagsResult.success && tagsResult.data && tagsResult.data.length > 0;
+    
+    if (!hasTags) {
+      await showSetupOptions(chatId, user, messageId, false, true);
+    } else {
+      await showSetupComplete(chatId, user, messageId);
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка при загрузке счетов:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке счетов', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// Обработчик пропуска настройки
+async function handleSkipSetup(chatId, userId, messageId) {
+  try {
+    // Получаем пользователя
+    const userResult = await supabaseClient.getUserByTelegramId(userId);
+    if (!userResult.success || !userResult.data) {
+      throw new Error('Пользователь не найден');
+    }
+    
+    const user = userResult.data;
+    
+    await showSetupComplete(chatId, user, messageId);
+    
+  } catch (error) {
+    console.error('❌ Ошибка при пропуске настройки:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// Функция показа завершения настройки
+async function showSetupComplete(chatId, user, messageId) {
+  try {
+    // Получаем статистику
+    const tagsResult = await supabaseClient.getUserTags(user.id);
+    const accountsResult = await supabaseClient.getUserAccounts(user.id);
+    
+    const tagsCount = tagsResult.success && tagsResult.data ? tagsResult.data.length : 0;
+    const accountsCount = accountsResult.success && accountsResult.data ? accountsResult.data.length : 0;
+    
+    const message = `🎉 Настройка завершена!
+
+📊 Статистика:
+- Статей загружено: ${tagsCount}
+- Счетов загружено: ${accountsCount}
+
+💡 Теперь вы можете:
+- Отправлять текстовые сообщения для создания транзакций
+- Использовать голосовые сообщения
+- Бот автоматически определит категорию и счет
+
+🚀 Создайте первую запись!
+
+Напишите сообщение о вашей транзакции, например:
+"Потратил 500 рублей на продукты"
+
+Или отправьте голосовое сообщение с описанием траты.`;
+
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_to_message_id: messageId
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка при показе завершения настройки:', error.message);
+    await bot.sendMessage(chatId, '🎉 Настройка завершена! Теперь вы можете использовать бота.', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// ===== АДМИНИСТРАТИВНЫЕ ФУНКЦИИ =====
+
+// Обработчик команды /admin_add_user
+async function handleAdminAddUserCommand(chatId, user, messageId) {
+  try {
+    // Проверяем, является ли пользователь администратором
+    const authResult = await isUserAuthorized(user.id, user.username);
+    if (!authResult.authorized || !authResult.user.is_admin) {
+      await bot.sendMessage(chatId, '❌ У вас нет прав администратора.', {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    const message = `👑 *Административная панель*
+
+Для добавления нового пользователя используйте команду:
+\`/admin_add_user <telegram_id> <username> <first_name>\`
+
+Пример:
+\`/admin_add_user 123456789 username Иван\`
+
+После добавления пользователь сможет использовать команду /start для настройки.`;
+
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_to_message_id: messageId
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка в handleAdminAddUserCommand:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при обработке команды', {
+      reply_to_message_id: messageId
+    });
+  }
+}
+
+// Функция создания пользователя администратором
+async function createUserByAdmin(telegramId, username, firstName, lastName = null) {
+  try {
+    const userData = {
+      telegram_id: telegramId,
+      username: username,
+      first_name: firstName,
+      last_name: lastName,
+      is_active: true,
+      is_admin: false
+    };
+    
+    const result = await supabaseClient.createOrUpdateUser(userData);
+    
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+    
+    return { success: true, user: result.data };
+    
+  } catch (error) {
+    console.error('❌ Ошибка при создании пользователя:', error.message);
+    return { success: false, error: error.message };
+  }
+}
 
 // ===== НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ЕДИНОГО СООБЩЕНИЯ =====
 

@@ -465,6 +465,376 @@ class SupabaseClient {
       };
     }
   }
+
+  // =====================================================
+  // МНОГОПОЛЬЗОВАТЕЛЬСКИЕ ФУНКЦИИ
+  // =====================================================
+
+  /**
+   * Проверка авторизации пользователя
+   */
+  async isUserAuthorized(telegramId, username) {
+    try {
+      if (!this.client) {
+        console.warn('⚠️ Supabase клиент не инициализирован');
+        return { authorized: false, user: null };
+      }
+
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegramId)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !data) {
+        console.log(`🚫 Пользователь не авторизован: ID=${telegramId}, username=${username}`);
+        return { authorized: false, user: null };
+      }
+
+      console.log(`✅ Пользователь авторизован: ${data.first_name} (ID: ${telegramId})`);
+      return { authorized: true, user: data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при проверке авторизации:', error.message);
+      return { authorized: false, user: null };
+    }
+  }
+
+  /**
+   * Создание или обновление пользователя
+   */
+  async createOrUpdateUser(userData) {
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .upsert({
+          telegram_id: userData.telegram_id,
+          username: userData.username,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          zenmoney_token: userData.zenmoney_token,
+          is_active: userData.is_active || false,
+          is_admin: userData.is_admin || false,
+          last_activity: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при создании/обновлении пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение пользователя по telegram_id
+   */
+  async getUserByTelegramId(telegramId) {
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .eq('telegram_id', telegramId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return { success: true, data: data || null };
+
+    } catch (error) {
+      console.error('❌ Ошибка при получении пользователя:', error.message);
+      return { success: false, error: error.message, data: null };
+    }
+  }
+
+  /**
+   * Обновление токена ZenMoney для пользователя
+   */
+  async updateUserZenMoneyToken(userId, token) {
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .update({
+          zenmoney_token: token,
+          last_activity: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при обновлении токена пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение пользовательской настройки
+   */
+  async getUserSetting(userId, parameterName) {
+    try {
+      const { data, error } = await this.client
+        .from('user_settings')
+        .select('parameter_value')
+        .eq('user_id', userId)
+        .eq('parameter_name', parameterName)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return { 
+        success: true, 
+        value: data?.parameter_value || null,
+        exists: !!data
+      };
+
+    } catch (error) {
+      console.error(`❌ Ошибка при получении пользовательской настройки ${parameterName}:`, error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        value: null,
+        exists: false
+      };
+    }
+  }
+
+  /**
+   * Обновление пользовательской настройки
+   */
+  async updateUserSetting(userId, parameterName, parameterValue) {
+    try {
+      const { data, error } = await this.client
+        .from('user_settings')
+        .upsert({
+          user_id: userId,
+          parameter_name: parameterName,
+          parameter_value: parameterValue,
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error(`❌ Ошибка при обновлении пользовательской настройки ${parameterName}:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Сохранение сообщения пользователя
+   */
+  async saveUserMessage(userId, messageData) {
+    try {
+      const { data, error } = await this.client
+        .from('user_messages')
+        .insert({
+          user_id: userId,
+          telegram_message_id: messageData.telegram_message_id,
+          chat_id: messageData.chat_id,
+          message_type: messageData.message_type,
+          original_text: messageData.original_text,
+          message_size: messageData.message_size
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при сохранении сообщения:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Вставка тегов для пользователя
+   */
+  async insertUserTags(userId, tags) {
+    try {
+      // Добавляем user_id к каждому тегу
+      const userTags = tags.map(tag => ({
+        ...tag,
+        user_id: userId
+      }));
+
+      const { data, error } = await this.client
+        .from('zm_tags')
+        .insert(userTags);
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при вставке тегов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Вставка счетов для пользователя
+   */
+  async insertUserAccounts(userId, accounts) {
+    try {
+      // Добавляем user_id к каждому счету
+      const userAccounts = accounts.map(account => ({
+        ...account,
+        user_id: userId
+      }));
+
+      const { data, error } = await this.client
+        .from('zm_accounts')
+        .insert(userAccounts);
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при вставке счетов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Очистка тегов пользователя
+   */
+  async clearUserTags(userId) {
+    try {
+      const { error } = await this.client
+        .from('zm_tags')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true };
+
+    } catch (error) {
+      console.error('❌ Ошибка при очистке тегов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Очистка счетов пользователя
+   */
+  async clearUserAccounts(userId) {
+    try {
+      const { error } = await this.client
+        .from('zm_accounts')
+        .delete()
+        .eq('user_id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true };
+
+    } catch (error) {
+      console.error('❌ Ошибка при очистке счетов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение тегов пользователя
+   */
+  async getUserTags(userId) {
+    try {
+      const { data, error } = await this.client
+        .from('zm_tags')
+        .select(`
+          *,
+          parent_tag:parent_id (
+            id,
+            title,
+            color,
+            icon
+          )
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // Преобразуем данные для удобства использования
+      const tagsWithParents = data.map(tag => ({
+        ...tag,
+        parent_title: tag.parent_tag?.title || null,
+        parent_color: tag.parent_tag?.color || null,
+        parent_icon: tag.parent_tag?.icon || null
+      }));
+
+      return { success: true, data: tagsWithParents };
+
+    } catch (error) {
+      console.error('❌ Ошибка при получении тегов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Получение счетов пользователя
+   */
+  async getUserAccounts(userId) {
+    try {
+      const { data, error } = await this.client
+        .from('zm_accounts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при получении счетов пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = SupabaseClient;
