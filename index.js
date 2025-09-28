@@ -86,7 +86,8 @@ async function transcribeVoice(audioBuffer) {
     const response = await openai.audio.transcriptions.create({
       file: audioFile,
       model: 'whisper-1',
-      language: 'ru' // Указываем русский язык для лучшего распознавания
+      language: 'ru', // Указываем русский язык для лучшего распознавания
+      prompt: 'Транзакция расход доход сумма магазин продукты. Числа всегда пиши цифрами с пробелами: сто тысяч = 100 000, два миллиона = 2 000 000, тысяча сто = 1 100, пятьсот = 500, тысяча = 1 000, двадцать тысяч = 20 000'
     });
     
     const transcribedText = response.text.trim();
