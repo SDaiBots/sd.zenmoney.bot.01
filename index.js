@@ -401,7 +401,17 @@ async function handleMessage(message) {
   const authResult = await isUserAuthorized(user.id, user.username);
   
   if (!authResult.authorized) {
-    console.log(`🚫 Игнорируем сообщение от неавторизованного пользователя: ${fullUserName} (ID: ${user.id})`);
+    console.log(`🚫 Неавторизованный пользователь: ${fullUserName} (ID: ${user.id})`);
+    
+    // Отправляем сообщение с информацией для администратора
+    const adminMessage = `Ваш логин: ${user.username || 'не указан'}
+Ваш Telegram ID: ${user.id}
+
+Перешлите это сообщение администратору, чтобы он добавил вас в группу тестирования`;
+    
+    await bot.sendMessage(chatId, adminMessage, {
+      reply_to_message_id: messageId
+    });
     return;
   }
 
@@ -665,6 +675,16 @@ async function handleStartCommand(chatId, user, messageId) {
     
     if (!authResult.authorized) {
       console.log(`🚫 Пользователь не авторизован: ${userName} (ID: ${user.id})`);
+      
+      // Отправляем сообщение с информацией для администратора
+      const adminMessage = `Ваш логин: ${user.username || 'не указан'}
+Ваш Telegram ID: ${user.id}
+
+Перешлите это сообщение администратору, чтобы он добавил вас в группу тестирования`;
+      
+      await bot.sendMessage(chatId, adminMessage, {
+        reply_to_message_id: messageId
+      });
       return;
     }
     
