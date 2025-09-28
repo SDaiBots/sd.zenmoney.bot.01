@@ -27,7 +27,6 @@ class SupabaseClient {
    */
   async testConnection() {
     try {
-      console.log('🔄 Проверяем подключение к Supabase...');
       
       const { data, error } = await this.client
         .from('zm_accounts')
@@ -38,7 +37,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log('✅ Подключение к Supabase успешно');
       return { success: true };
       
     } catch (error) {
@@ -52,7 +50,6 @@ class SupabaseClient {
    */
   async clearAccounts() {
     try {
-      console.log('🔄 Очищаем таблицу zm_accounts...');
       
       const { error } = await this.client
         .from('zm_accounts')
@@ -63,7 +60,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log('✅ Таблица zm_accounts очищена');
       return { success: true };
       
     } catch (error) {
@@ -77,7 +73,6 @@ class SupabaseClient {
    */
   async insertAccounts(accounts) {
     try {
-      console.log(`🔄 Вставляем ${accounts.length} счетов в Supabase...`);
       
       const { data, error } = await this.client
         .from('zm_accounts')
@@ -87,7 +82,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log(`✅ Успешно вставлено ${accounts.length} счетов`);
       return { success: true, data };
       
     } catch (error) {
@@ -123,7 +117,6 @@ class SupabaseClient {
    */
   async clearTags() {
     try {
-      console.log('🔄 Очищаем таблицу zm_tags...');
       
       const { error } = await this.client
         .from('zm_tags')
@@ -134,7 +127,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log('✅ Таблица zm_tags очищена');
       return { success: true };
       
     } catch (error) {
@@ -148,7 +140,6 @@ class SupabaseClient {
    */
   async insertTags(tags) {
     try {
-      console.log(`🔄 Вставляем ${tags.length} тегов в Supabase...`);
       
       const { data, error } = await this.client
         .from('zm_tags')
@@ -158,7 +149,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log(`✅ Успешно вставлено ${tags.length} тегов`);
       return { success: true, data };
       
     } catch (error) {
@@ -328,7 +318,6 @@ class SupabaseClient {
    */
   async getSetting(parameterName) {
     try {
-      console.log(`🔍 Получаем настройку: ${parameterName}`);
       
       const { data, error } = await this.client
         .from('settings')
@@ -341,7 +330,6 @@ class SupabaseClient {
       }
       
       const value = data?.parameter_value || null;
-      console.log(`📋 Настройка ${parameterName}: ${value}`);
       
       return { 
         success: true, 
@@ -365,7 +353,6 @@ class SupabaseClient {
    */
   async updateSetting(parameterName, parameterValue) {
     try {
-      console.log(`🔄 Обновляем настройку: ${parameterName} = ${parameterValue}`);
       
       const { data, error } = await this.client
         .from('settings')
@@ -381,7 +368,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log(`✅ Настройка ${parameterName} обновлена`);
       return { success: true, data };
       
     } catch (error) {
@@ -417,7 +403,6 @@ class SupabaseClient {
    */
   async getAccountByName(accountName) {
     try {
-      console.log(`🔍 Ищем счет по названию: ${accountName}`);
       
       const { data, error } = await this.client
         .from('zm_accounts')
@@ -430,7 +415,6 @@ class SupabaseClient {
         throw error;
       }
       
-      console.log(`📋 Найден счет:`, data ? `${data.title} (${data.instrument_id})` : 'не найден');
       
       return { 
         success: true, 
@@ -455,7 +439,6 @@ class SupabaseClient {
    */
   async getCurrencyByInstrumentId(instrumentId) {
     try {
-      console.log(`🔍 Получаем валюту по instrument_id: ${instrumentId}`);
       
       // Пока что используем статический маппинг, так как таблицы instruments нет
       const currencyMap = {
@@ -467,7 +450,6 @@ class SupabaseClient {
       };
       
       const currency = currencyMap[instrumentId] || 'RUB';
-      console.log(`💱 Валюта для instrument_id ${instrumentId}: ${currency}`);
       
       return { 
         success: true, 

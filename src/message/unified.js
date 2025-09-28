@@ -20,25 +20,19 @@ const {
  */
 async function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}, supabaseClient = null, isVoiceMessage = false) {
   try {
-    console.log('📝 Создаем единое сообщение транзакции...');
-    
     // 1. Извлекаем сумму из сообщения
     const amountData = extractAmount(userMessage);
-    console.log(`💰 Извлечены данные о сумме:`, amountData);
     
     // 2. Определяем тип счета
     const accountType = detectAccountType(userMessage);
-    console.log(`🏦 Определен тип счета: ${accountType}`);
     
     // 3. Получаем название счета по умолчанию
     const accountName = getDefaultAccountName(accountType, settings);
-    console.log(`📋 Название счета: ${accountName}`);
     
     // 4. Определяем сумму
     let amount = amountData.amount;
     if (!amount) {
       amount = 0; // Если сумма не найдена, ставим 0
-      console.log(`⚠️ Сумма не найдена, используем 0`);
     }
     
     // 5. Определяем тег
@@ -50,7 +44,6 @@ async function createUnifiedTransactionMessage(userMessage, aiResult, settings =
       if (aiResult.tags.length > 1) {
         additionalTags = aiResult.tags.slice(1); // Дополнительные теги для кнопок
       }
-      console.log(`🏷️ Основной тег: ${tag}, дополнительных: ${additionalTags.length}`);
     }
     
     // 6. Получаем сегодняшнюю дату
@@ -88,7 +81,6 @@ async function createUnifiedTransactionMessage(userMessage, aiResult, settings =
       aiConfidence: aiResult ? aiResult.confidence : 0
     };
     
-    console.log('✅ Единое сообщение транзакции создано');
     
     return {
       success: true,
@@ -202,17 +194,11 @@ function updateMessageWithNewTag(currentMessageText, newTagTitle) {
  */
 function updateMessageWithNewAccount(currentMessageText, newAccountName) {
   try {
-    console.log(`🔄 Обновляем счет в сообщении: "${newAccountName}"`);
-    console.log(`📝 Исходное сообщение:`, currentMessageText);
-    
     // Заменяем счет в сообщении
     const updatedMessage = currentMessageText.replace(
       /👛 .+/,
       `👛 ${newAccountName}`
     );
-    
-    console.log(`📝 Обновленное сообщение:`, updatedMessage);
-    console.log(`✅ Сообщение обновлено: ${updatedMessage !== currentMessageText ? 'ДА' : 'НЕТ'}`);
     
     return updatedMessage;
     

@@ -4,7 +4,7 @@ const axios = require('axios');
 const SupabaseClient = require('./src/supabase/client');
 const { analyzeMessageWithAI } = require('./src/ai/analyzer');
 const { createUnifiedTransactionMessage, createUnifiedTransactionKeyboard, updateMessageWithNewTag, updateMessageWithNewAccount } = require('./src/message/unified');
-const { createZenMoneyTransactionStructure, createTransactionInZenMoney, formatTransactionForDisplay } = require('./src/zenmoney/transaction');
+const { createZenMoneyTransactionStructure, createTransactionInZenMoney } = require('./src/zenmoney/transaction');
 require('dotenv').config();
 
 const app = express();
@@ -258,8 +258,6 @@ async function handleMessage(message) {
 // Функция обработки транзакции с ИИ-анализом
 async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false, replyToMessageId = null) {
   try {
-    console.log(`🤖 Начинаем обработку сообщения от пользователя ${fullUserName}: "${text}"`);
-    
     // Получаем настройки из Supabase
     let settings = {};
     if (supabaseClient) {
@@ -301,13 +299,9 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoice
       reply_to_message_id: replyToMessageId
     });
     
-    console.log(`✅ Отправлено единое сообщение транзакции пользователю ${fullUserName} (ID: ${user.id})`);
-    
     // Сохраняем исходные теги от ИИ для этого сообщения
     const messageKey = `${chatId}_${message.message_id}`;
     aiTagsStorage.set(messageKey, unifiedResult.aiTags);
-    
-    console.log(`💾 Сохранены исходные теги от ИИ для сообщения ${messageKey}:`, unifiedResult.aiTags.map(t => t.title));
     
   } catch (error) {
     console.error('❌ Ошибка при обработке транзакции с ИИ:', error.message);
@@ -315,98 +309,10 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoice
     // Fallback: отправляем простое сообщение об ошибке
     bot.sendMessage(chatId, `❌ Ошибка при обработке сообщения: ${error.message}`, {
       reply_to_message_id: replyToMessageId
-    })
-      .then(() => {
-        console.log(`✅ Отправлено сообщение об ошибке пользователю ${fullUserName}`);
-      })
-      .catch((sendError) => {
-        console.error('❌ Ошибка при отправке сообщения об ошибке:', sendError);
-      });
-  }
-}
-
-// Функция отправки ответа ИИ
-async function sendAIResponse(chatId, aiResult, originalMessage) {
-  try {
-    const tags = aiResult.tags || [];
-    const primaryTag = aiResult.primaryTag;
-    
-    if (tags.length === 0) {
-      const aiMessage = `🤖 *ИИ не смог определить категорию*
-
-🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
-
-💡 Попробуйте более конкретное описание или используйте кнопки в основном сообщении.`;
-      
-      await bot.sendMessage(chatId, aiMessage, { parse_mode: 'Markdown' });
-      console.log('✅ Отправлен ответ ИИ: категория не определена');
-      return;
-    }
-    
-    // Формируем сообщение
-    let aiMessage;
-    if (tags.length === 1) {
-      // Один вариант - однозначное сопоставление
-      aiMessage = `🤖 *ИИ определил категорию:* ${escapeMarkdown(primaryTag.title)}
-      
-📊 *Уверенность:* ${Math.round(aiResult.confidence * 100)}%
-🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
-
-✅ Однозначное сопоставление - других вариантов нет.`;
-    } else {
-      // Несколько вариантов
-      aiMessage = `🤖 *ИИ определил категорию:* ${escapeMarkdown(primaryTag.title)}
-      
-📊 *Уверенность:* ${Math.round(aiResult.confidence * 100)}%
-🔧 *Модель:* ${escapeMarkdown(aiResult.aiSettings.provider)} (${escapeMarkdown(aiResult.aiSettings.model)})
-
-💡 Найдено ${tags.length} вариантов. Выберите подходящий:`;
-    }
-    
-    // Создаем инлайн кнопки с вариантами тегов (максимум 5)
-    const inlineKeyboard = createAITagsKeyboard(tags.slice(0, 5));
-    
-    await bot.sendMessage(chatId, aiMessage, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: inlineKeyboard
-      }
     });
-    
-    console.log(`✅ Отправлен ответ ИИ с ${tags.length} вариантами тегов`);
-    
-  } catch (error) {
-    console.error('❌ Ошибка при отправке ответа ИИ:', error.message);
   }
 }
 
-// Функция создания инлайн клавиатуры с вариантами тегов ИИ
-function createAITagsKeyboard(tags) {
-  const keyboard = [];
-  
-  // Создаем кнопки по 2 в ряду
-  for (let i = 0; i < tags.length; i += 2) {
-    const row = [];
-    
-    // Первая кнопка в ряду
-    row.push({
-      text: `🎯 ${tags[i].title}`,
-      callback_data: `ai_tag_${tags[i].id}`
-    });
-    
-    // Вторая кнопка в ряду (если есть)
-    if (i + 1 < tags.length) {
-      row.push({
-        text: `🎯 ${tags[i + 1].title}`,
-        callback_data: `ai_tag_${tags[i + 1].id}`
-      });
-    }
-    
-    keyboard.push(row);
-  }
-  
-  return keyboard;
-}
 
 // Функция экранирования Markdown символов для Telegram
 function escapeMarkdown(text) {
@@ -535,13 +441,7 @@ function handleStartCommand(chatId, userName, messageId) {
   bot.sendMessage(chatId, welcomeMessage, { 
     parse_mode: 'Markdown',
     reply_to_message_id: messageId
-  })
-    .then(() => {
-      console.log(`Отправлено приветствие пользователю ${userName}`);
-    })
-    .catch((error) => {
-      console.error('Ошибка при отправке приветствия:', error);
-    });
+  });
 }
 
 // Обработчик команды /accounts
@@ -607,7 +507,6 @@ async function handleAccountsCommand(chatId, userName, messageId) {
       }
     }
     
-    console.log(`Отправлен список счетов пользователю ${userName} (${Object.keys(accounts).length} счетов)`);
     
   } catch (error) {
     console.error('Ошибка при получении счетов:', error);
@@ -791,7 +690,6 @@ async function handleAccountsUpdCommand(chatId, userName, messageId) {
       message_id: loadingMessage.message_id
     });
     
-    console.log(`Счета обновлены в Supabase пользователем ${userName} (${accountsForSupabase.length} счетов)`);
     
   } catch (error) {
     console.error('Ошибка при обновлении счетов:', error);
@@ -944,7 +842,6 @@ async function handleTagsUpdCommand(chatId, userName, messageId) {
       message_id: loadingMessage.message_id
     });
     
-    console.log(`Теги обновлены в Supabase пользователем ${userName} (${tagsForSupabase.length} тегов)`);
     
   } catch (error) {
     console.error('Ошибка при обновлении тегов:', error);
@@ -1015,13 +912,7 @@ async function handleAISettingsCommand(chatId, userName, messageId) {
     bot.sendMessage(chatId, message, { 
       parse_mode: 'Markdown',
       reply_to_message_id: messageId
-    })
-      .then(() => {
-        console.log(`Отправлены настройки ИИ пользователю ${userName}`);
-      })
-      .catch((error) => {
-        console.error('Ошибка при отправке настроек ИИ:', error);
-      });
+    });
 
   } catch (error) {
     console.error('Ошибка при получении настроек ИИ:', error);
@@ -1091,43 +982,6 @@ ${testResult.testAnalysis.tags?.length > 0 ?
   }
 }
 
-// Функция создания структуры транзакции
-function createTransactionStructure(comment, accountName = 'Бумажник') {
-  return `Новая запись:
-
-🛍️ Продукты
-👛 ${accountName}
-💲 500 000
-💬 ${comment}`;
-}
-
-// Функция создания инлайн клавиатуры
-function createTransactionKeyboard() {
-  return [
-    [
-      {
-        text: '💳',
-        callback_data: 'transaction_card'
-      },
-      {
-        text: '💵',
-        callback_data: 'transaction_cash'
-      },
-      {
-        text: '✅',
-        callback_data: 'transaction_apply'
-      },
-      {
-        text: '❌', 
-        callback_data: 'transaction_cancel'
-      },
-      {
-        text: '✏️',
-        callback_data: 'transaction_edit'
-      }
-    ]
-  ];
-}
 
 // Обработчик callback query
 async function handleCallbackQuery(callbackQuery) {
@@ -1138,37 +992,11 @@ async function handleCallbackQuery(callbackQuery) {
   const userName = user.first_name || user.username || 'Неизвестный пользователь';
   
   // Отвечаем на callback query
-  bot.answerCallbackQuery(callbackQuery.id)
-    .then(() => {
-      console.log(`Обработан callback от пользователя ${userName}: ${data}`);
-    })
-    .catch((error) => {
-      console.error('Ошибка при ответе на callback query:', error);
-    });
+  bot.answerCallbackQuery(callbackQuery.id);
   
   // Обработка различных действий
   switch (data) {
-    case 'transaction_apply':
-      await handleTransactionApply(chatId, messageId, callbackQuery.message.text);
-      break;
-      
-    case 'transaction_cancel':
-      await handleTransactionCancel(chatId, messageId, callbackQuery.message.text);
-      break;
-      
-    case 'transaction_edit':
-      await handleTransactionEdit(chatId, messageId);
-      break;
-      
-    case 'transaction_card':
-      await handleAccountSelection(chatId, messageId, 'default_card', callbackQuery.message.text);
-      break;
-      
-    case 'transaction_cash':
-      await handleAccountSelection(chatId, messageId, 'default_cash', callbackQuery.message.text);
-      break;
-      
-    // Новые обработчики для единого сообщения
+    // Обработчики для единого сообщения
     case 'unified_apply':
       await handleUnifiedApply(chatId, messageId, callbackQuery.message.text);
       break;
@@ -1194,13 +1022,8 @@ async function handleCallbackQuery(callbackQuery) {
       break;
       
     default:
-      // Обработка callback для ИИ тегов (старые)
-      if (data.startsWith('ai_tag_')) {
-        const tagId = data.replace('ai_tag_', '');
-        await handleAITagSelection(chatId, messageId, tagId, callbackQuery.message.text);
-      }
-      // Обработка callback для тегов в едином сообщении (новые)
-      else if (data.startsWith('unified_tag_')) {
+      // Обработка callback для тегов в едином сообщении
+      if (data.startsWith('unified_tag_')) {
         const tagId = data.replace('unified_tag_', '');
         await handleUnifiedTagSelection(chatId, messageId, tagId, callbackQuery.message.text);
       } else {
@@ -1209,165 +1032,6 @@ async function handleCallbackQuery(callbackQuery) {
   }
 }
 
-// Функция обработки выбора тега ИИ
-async function handleAITagSelection(chatId, messageId, tagId, originalMessage) {
-  try {
-    if (!supabaseClient) {
-      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.', {
-        reply_to_message_id: messageId
-      });
-      return;
-    }
-
-    // Получаем информацию о выбранном теге
-    const tagsResult = await supabaseClient.getAllTagsWithParents();
-    if (!tagsResult.success || !tagsResult.data) {
-      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.', {
-        reply_to_message_id: messageId
-      });
-      return;
-    }
-
-    const selectedTag = tagsResult.data.find(tag => tag.id === tagId);
-    if (!selectedTag) {
-      bot.sendMessage(chatId, '❌ Тег не найден.', {
-        reply_to_message_id: messageId
-      });
-      return;
-    }
-
-    // Формируем сообщение с подтверждением выбора
-    const confirmationMessage = `✅ *Выбран тег:* ${escapeMarkdown(selectedTag.title)}
-    
-${selectedTag.parent_title ? `📂 *Категория:* ${escapeMarkdown(selectedTag.parent_title)}` : ''}
-${selectedTag.description ? `📝 *Описание:* ${escapeMarkdown(selectedTag.description)}` : ''}
-
-🎯 Тег успешно применен к транзакции\\!`;
-
-    // Обновляем сообщение с результатом
-    bot.editMessageText(confirmationMessage, {
-      chat_id: chatId,
-      message_id: messageId,
-      parse_mode: 'Markdown'
-    });
-
-    console.log(`✅ Пользователь выбрал тег ИИ: ${selectedTag.title} (ID: ${tagId})`);
-
-  } catch (error) {
-    console.error('❌ Ошибка при обработке выбора тега ИИ:', error.message);
-    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.', {
-      reply_to_message_id: messageId
-    });
-  }
-}
-
-// Функция обработки применения транзакции
-async function handleTransactionApply(chatId, messageId, originalMessage) {
-  try {
-    // Извлекаем структуру записи из оригинального сообщения
-    const structureMatch = originalMessage.match(/Новая запись:(.+)/s);
-    const structure = structureMatch ? structureMatch[1].trim() : originalMessage;
-    
-    // Формируем новое сообщение
-    const newMessage = `✅ Запись добавлена
-
-${structure}`;
-    
-    // Обновляем сообщение без кнопок
-    bot.editMessageText(newMessage, {
-      chat_id: chatId,
-      message_id: messageId
-    });
-    
-  } catch (error) {
-    console.error('Ошибка при применении транзакции:', error);
-  }
-}
-
-// Функция экранирования для MarkdownV2
-function escapeMarkdownV2(text) {
-  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
-}
-
-// Функция обработки отмены транзакции
-async function handleTransactionCancel(chatId, messageId, originalMessage) {
-  try {
-    // Извлекаем структуру записи из оригинального сообщения
-    const structureMatch = originalMessage.match(/Новая запись:(.+)/s);
-    const structure = structureMatch ? structureMatch[1].trim() : originalMessage;
-    
-    // Добавляем зачеркивание ко всем строкам структуры и экранируем
-    const strikethroughStructure = structure.split('\n').map(line => 
-      line.trim() ? `~~${escapeMarkdownV2(line.trim())}~~` : line
-    ).join('\n');
-    
-    // Формируем новое сообщение
-    const newMessage = `❌ Запись отменена
-
-${strikethroughStructure}`;
-    
-    // Обновляем сообщение без кнопок
-    bot.editMessageText(newMessage, {
-      chat_id: chatId,
-      message_id: messageId,
-      parse_mode: 'MarkdownV2'
-    });
-    
-  } catch (error) {
-    console.error('Ошибка при отмене транзакции:', error);
-  }
-}
-
-// Функция обработки корректировки транзакции
-async function handleTransactionEdit(chatId, messageId) {
-  try {
-    // Удаляем сообщение
-    bot.deleteMessage(chatId, messageId);
-    
-  } catch (error) {
-    console.error('Ошибка при удалении сообщения:', error);
-  }
-}
-
-// Функция обработки выбора счета
-async function handleAccountSelection(chatId, messageId, settingName, originalMessage) {
-  try {
-    if (!supabaseClient) {
-      bot.editMessageText('❌ Supabase не настроен', {
-        chat_id: chatId,
-        message_id: messageId
-      });
-      return;
-    }
-    
-    // Получаем значение настройки из Supabase
-    const settingResult = await supabaseClient.getSetting(settingName);
-    const accountName = settingResult.success && settingResult.value ? settingResult.value : 'Бумажник';
-    
-    // Извлекаем комментарий из оригинального сообщения
-    const commentMatch = originalMessage.match(/💬 \*\*Комментарий:\*\* (.+)/);
-    const comment = commentMatch ? commentMatch[1] : 'Комментарий не найден';
-    
-    // Создаем новую структуру транзакции с выбранным счетом
-    const newTransactionStructure = createTransactionStructure(comment, accountName);
-    const inlineKeyboard = createTransactionKeyboard();
-    
-    bot.editMessageText(newTransactionStructure, {
-      chat_id: chatId,
-      message_id: messageId,
-      reply_markup: {
-        inline_keyboard: inlineKeyboard
-      }
-    });
-    
-  } catch (error) {
-    console.error('Ошибка при обработке выбора счета:', error);
-    bot.editMessageText('❌ Ошибка при выборе счета', {
-      chat_id: chatId,
-      message_id: messageId
-    });
-  }
-}
 
 // ===== НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ЕДИНОГО СООБЩЕНИЯ =====
 
@@ -1378,8 +1042,6 @@ async function handleAccountSelection(chatId, messageId, settingName, originalMe
  */
 function parseTransactionFromMessage(messageText) {
   try {
-    console.log('🔍 Парсим данные транзакции из сообщения...');
-    
     // Регулярные выражения для извлечения данных
     const tagMatch = messageText.match(/🛍️ (.+)/);
     const accountMatch = messageText.match(/👛 (.+)/);
@@ -1387,7 +1049,6 @@ function parseTransactionFromMessage(messageText) {
     const commentMatch = messageText.match(/💬 (.+)/);
     
     if (!tagMatch || !accountMatch || !amountMatch || !commentMatch) {
-      console.log('❌ Не удалось извлечь все необходимые данные из сообщения');
       return null;
     }
     
@@ -1396,7 +1057,6 @@ function parseTransactionFromMessage(messageText) {
     const amount = parseFloat(amountStr);
     
     if (isNaN(amount)) {
-      console.log('❌ Не удалось распарсить сумму:', amountMatch[1]);
       return null;
     }
     
@@ -1412,7 +1072,6 @@ function parseTransactionFromMessage(messageText) {
       comment: commentMatch[1].trim()
     };
     
-    console.log('✅ Данные транзакции успешно распарсены:', transactionData);
     return transactionData;
     
   } catch (error) {
@@ -1424,8 +1083,6 @@ function parseTransactionFromMessage(messageText) {
 // Функция обработки применения транзакции в едином сообщении
 async function handleUnifiedApply(chatId, messageId, originalMessage) {
   try {
-    console.log('🔄 Обрабатываем нажатие кнопки "принять запись"...');
-    
     // Парсим данные транзакции из сообщения
     const transactionData = parseTransactionFromMessage(originalMessage);
     if (!transactionData) {
@@ -1435,8 +1092,6 @@ async function handleUnifiedApply(chatId, messageId, originalMessage) {
       });
       return;
     }
-    
-    console.log('📊 Распарсенные данные транзакции:', transactionData);
     
     // Создаем транзакцию в ZenMoney
     const createResult = await createTransactionInZenMoney(transactionData, supabaseClient);
@@ -1455,8 +1110,6 @@ ${transactionData.comment}`;
         chat_id: chatId,
         message_id: messageId
       });
-      
-      console.log('✅ Транзакция успешно создана в ZenMoney');
       
     } else {
       // Обрабатываем ошибку создания
@@ -1486,8 +1139,6 @@ ${createResult.error}
 // Функция обработки отмены транзакции в едином сообщении
 async function handleUnifiedCancel(chatId, messageId, originalMessage) {
   try {
-    console.log('🔄 Обрабатываем нажатие кнопки "отменить запись"...');
-    
     // Парсим данные транзакции из сообщения
     const transactionData = parseTransactionFromMessage(originalMessage);
     if (!transactionData) {
@@ -1539,8 +1190,6 @@ ${strikethroughStructure}`;
       parse_mode: 'MarkdownV2'
     });
     
-    console.log('❌ Транзакция отменена в едином сообщении');
-    
   } catch (error) {
     console.error('Ошибка при отмене транзакции в едином сообщении:', error);
   }
@@ -1551,7 +1200,6 @@ async function handleUnifiedEdit(chatId, messageId) {
   try {
     // Удаляем сообщение
     bot.deleteMessage(chatId, messageId);
-    console.log('✏️ Сообщение удалено для корректировки');
     
   } catch (error) {
     console.error('Ошибка при удалении сообщения для корректировки:', error);
@@ -1561,11 +1209,7 @@ async function handleUnifiedEdit(chatId, messageId) {
 // Функция обработки выбора счета в едином сообщении
 async function handleUnifiedAccountSelection(chatId, messageId, settingName, originalMessage) {
   try {
-    console.log(`🔍 Начинаем обработку выбора счета: ${settingName} для сообщения ${chatId}_${messageId}`);
-    
     if (!supabaseClient) {
-      console.error('❌ Supabase клиент не инициализирован');
-      console.error('❌ Состояние supabaseClient:', supabaseClient);
       bot.editMessageText('❌ Supabase не настроен', {
         chat_id: chatId,
         message_id: messageId
@@ -1574,24 +1218,19 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     }
     
     // Получаем значение настройки из Supabase
-    console.log(`📋 Получаем настройку: ${settingName}`);
     const settingResult = await supabaseClient.getSetting(settingName);
-    console.log(`📋 Результат получения настройки:`, settingResult);
     
     let accountName;
     
     if (settingName === 'default_card') {
-      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
       accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
         ? settingResult.value.trim() 
         : 'Карта';
     } else if (settingName === 'default_cash') {
-      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
       accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
         ? settingResult.value.trim() 
         : 'Бумажник';
     } else if (settingName === 'shared_card') {
-      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
       accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
         ? settingResult.value.trim() 
         : 'Общая карта';
@@ -1599,25 +1238,17 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
       accountName = 'Бумажник';
     }
     
-    console.log(`🏦 Определено название счета: ${accountName}`);
-    
     // Обновляем сообщение с новым счетом
-    console.log(`📝 Обновляем сообщение с новым счетом: ${accountName}`);
     const updatedMessage = updateMessageWithNewAccount(originalMessage, accountName);
-    console.log(`📝 Результат обновления сообщения:`, updatedMessage);
     
     // Получаем исходные теги от ИИ из хранилища
     const messageKey = `${chatId}_${messageId}`;
     const originalAiTags = aiTagsStorage.get(messageKey) || [];
     
-    console.log(`🔍 Получены исходные теги от ИИ для сообщения ${messageKey}:`, originalAiTags.map(t => t.title));
-    
     // Используем исходные теги от ИИ, если они есть, иначе получаем из базы данных
     let availableTags = originalAiTags;
     if (availableTags.length === 0) {
-      console.log(`📋 Получаем теги из базы данных, так как исходные теги пусты`);
       const tagsResult = await supabaseClient.getAllTagsWithParents();
-      console.log(`📋 Результат получения тегов:`, tagsResult);
       availableTags = tagsResult.success && tagsResult.data ? tagsResult.data.filter(tag => tag.parent_id !== null) : [];
     }
     
@@ -1652,9 +1283,6 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     
     keyboard.push(mainButtons);
     
-    console.log(`⌨️ Создана клавиатура:`, keyboard);
-    console.log(`📤 Отправляем обновленное сообщение...`);
-    
     bot.editMessageText(updatedMessage, {
       chat_id: chatId,
       message_id: messageId,
@@ -1663,17 +1291,8 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
       }
     });
     
-    console.log(`✅ Счет обновлен в едином сообщении: ${accountName}`);
-    
   } catch (error) {
     console.error('❌ Ошибка при обработке выбора счета в едином сообщении:', error);
-    console.error('❌ Детали ошибки:', {
-      message: error.message,
-      stack: error.stack,
-      chatId,
-      messageId,
-      settingName
-    });
     bot.editMessageText('❌ Ошибка при выборе счета', {
       chat_id: chatId,
       message_id: messageId
@@ -1714,8 +1333,6 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
     // Получаем исходные теги от ИИ из хранилища
     const messageKey = `${chatId}_${messageId}`;
     const originalAiTags = aiTagsStorage.get(messageKey) || [];
-    
-    console.log(`🔍 Получены исходные теги от ИИ для сообщения ${messageKey}:`, originalAiTags.map(t => t.title));
     
     // Используем исходные теги от ИИ, если они есть, иначе получаем из базы данных
     const availableTags = originalAiTags.length > 0 ? originalAiTags : tagsResult.data.filter(tag => tag.parent_id !== null);
@@ -1760,7 +1377,6 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
       }
     });
 
-    console.log(`✅ Тег обновлен в едином сообщении: ${selectedTag.title} (ID: ${tagId})`);
 
   } catch (error) {
     console.error('❌ Ошибка при обработке выбора тега в едином сообщении:', error.message);
@@ -1771,33 +1387,6 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
 }
 
 
-// Вспомогательные функции
-
-function splitMessage(text, maxLength) {
-  const chunks = [];
-  let currentChunk = '';
-  
-  const lines = text.split('\n');
-  
-  for (const line of lines) {
-    if (currentChunk.length + line.length + 1 > maxLength) {
-      if (currentChunk) {
-        chunks.push(currentChunk);
-        currentChunk = line;
-      } else {
-        chunks.push(line);
-      }
-    } else {
-      currentChunk += (currentChunk ? '\n' : '') + line;
-    }
-  }
-  
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-  
-  return chunks;
-}
 
 
 // Базовый endpoint для проверки работы сервера

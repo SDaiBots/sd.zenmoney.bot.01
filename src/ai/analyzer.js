@@ -104,42 +104,6 @@ async function analyzeMessageWithAI(message, supabaseClient) {
   }
 }
 
-/**
- * Поиск точного совпадения тега в списке доступных тегов
- */
-function findExactTagMatch(aiTag, availableTags) {
-  if (!aiTag) return null;
-  
-  const cleanAITag = aiTag.trim().toLowerCase();
-  
-  // Поиск точного совпадения
-  let exactMatch = availableTags.find(tag => 
-    tag.title.toLowerCase() === cleanAITag
-  );
-  
-  if (exactMatch) return exactMatch;
-  
-  // Поиск частичного совпадения
-  let partialMatch = availableTags.find(tag => 
-    tag.title.toLowerCase().includes(cleanAITag) ||
-    cleanAITag.includes(tag.title.toLowerCase())
-  );
-  
-  if (partialMatch) return partialMatch;
-  
-  // Поиск по ключевым словам
-  const keywords = cleanAITag.split(/\s+/);
-  let keywordMatch = availableTags.find(tag => {
-    const tagWords = tag.title.toLowerCase().split(/\s+/);
-    return keywords.some(keyword => 
-      tagWords.some(tagWord => 
-        tagWord.includes(keyword) || keyword.includes(tagWord)
-      )
-    );
-  });
-  
-  return keywordMatch || null;
-}
 
 /**
  * Тестирование ИИ-функционала
@@ -210,6 +174,5 @@ async function testAIFunctionality(supabaseClient) {
 
 module.exports = {
   analyzeMessageWithAI,
-  findExactTagMatch,
   testAIFunctionality
 };

@@ -26,7 +26,6 @@ class ZenMoneyAPI {
    */
   async getDictionaries() {
     try {
-      console.log('🔄 Запрашиваем справочники из ZenMoney...');
       
       const currentTimestamp = Math.floor(Date.now() / 1000);
       
@@ -35,7 +34,6 @@ class ZenMoneyAPI {
         serverTimestamp: 0 // Первый запрос - получаем все данные
       });
 
-      console.log('✅ Справочники получены успешно');
       return this.parseDictionaries(response.data);
       
     } catch (error) {
@@ -132,8 +130,6 @@ class ZenMoneyAPI {
    */
   async createTransaction(transactionData) {
     try {
-      console.log('🔄 Создаем транзакцию в ZenMoney...');
-      console.log('📊 Данные транзакции:', transactionData);
       
       const currentTimestamp = Math.floor(Date.now() / 1000);
       
@@ -144,12 +140,9 @@ class ZenMoneyAPI {
         transaction: [transactionData]  // Используем массив транзакций
       };
 
-      console.log('📤 Отправляем запрос:', requestData);
       
       const response = await this.client.post('/v8/diff', requestData);
 
-      console.log('✅ Транзакция создана успешно');
-      console.log('📥 Ответ от ZenMoney:', response.data);
       return response.data;
       
     } catch (error) {
@@ -163,12 +156,9 @@ class ZenMoneyAPI {
    */
   async testConnection() {
     try {
-      console.log('🔄 Проверяем подключение к ZenMoney API...');
       
       const dictionaries = await this.getDictionaries();
       
-      console.log('✅ Подключение к ZenMoney API успешно');
-      console.log(`📊 Получено: ${dictionaries.categories.length} категорий, ${dictionaries.wallets.length} кошельков, ${dictionaries.tags.length} тегов`);
       
       return {
         success: true,

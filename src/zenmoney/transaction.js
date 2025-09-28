@@ -12,8 +12,6 @@ const ZenMoneyAPI = require('./api');
  */
 async function createZenMoneyTransactionStructure(transactionData, supabaseClient) {
   try {
-    console.log('🔄 Формируем структуру транзакции для ZenMoney...');
-    console.log('📊 Данные транзакции:', transactionData);
 
     // Получаем ID счета из Supabase
     let accountId = null;
@@ -25,9 +23,6 @@ async function createZenMoneyTransactionStructure(transactionData, supabaseClien
         );
         if (account) {
           accountId = account.id;
-          console.log(`🏦 Найден счет: ${account.title} (ID: ${accountId})`);
-        } else {
-          console.log(`⚠️ Счет "${transactionData.account.name}" не найден в базе данных`);
         }
       }
     }
@@ -42,9 +37,6 @@ async function createZenMoneyTransactionStructure(transactionData, supabaseClien
         );
         if (tag) {
           tagId = tag.id;
-          console.log(`🏷️ Найден тег: ${tag.title} (ID: ${tagId})`);
-        } else {
-          console.log(`⚠️ Тег "${transactionData.tag.title}" не найден в базе данных`);
         }
       }
     }
@@ -81,7 +73,6 @@ async function createZenMoneyTransactionStructure(transactionData, supabaseClien
       changed: Math.floor(Date.now() / 1000) // Unix timestamp
     };
 
-    console.log('✅ Структура транзакции для ZenMoney сформирована:', zenMoneyTransaction);
 
     return {
       success: true,
@@ -107,7 +98,6 @@ async function createZenMoneyTransactionStructure(transactionData, supabaseClien
  */
 async function createTransactionInZenMoney(transactionData, supabaseClient) {
   try {
-    console.log('🔄 Создаем транзакцию в ZenMoney...');
 
     // Формируем структуру транзакции
     const structureResult = await createZenMoneyTransactionStructure(transactionData, supabaseClient);
@@ -124,7 +114,6 @@ async function createTransactionInZenMoney(transactionData, supabaseClient) {
     // Отправляем транзакцию в ZenMoney
     const result = await zenMoneyAPI.createTransaction(structureResult.transaction);
 
-    console.log('✅ Транзакция успешно создана в ZenMoney');
 
     return {
       success: true,
@@ -154,34 +143,9 @@ function generateTransactionId() {
   });
 }
 
-/**
- * Форматирует структуру транзакции для отображения пользователю
- * @param {Object} transactionData - Данные транзакции
- * @returns {string} - Отформатированная строка
- */
-function formatTransactionForDisplay(transactionData) {
-  try {
-    const date = new Date().toLocaleDateString('ru-RU');
-    
-    return `📋 *Структура записи для ZenMoney:*
-
-📅 **Дата:** ${date}
-🏷️ **Категория:** ${transactionData.tag.title}
-🏦 **Счет:** ${transactionData.account.name}
-💰 **Сумма:** ${transactionData.formattedAmount} ₽
-💬 **Комментарий:** ${transactionData.comment}
-
-✅ Готово к созданию в ZenMoney!`;
-
-  } catch (error) {
-    console.error('❌ Ошибка при форматировании транзакции:', error.message);
-    return 'Ошибка при форматировании транзакции';
-  }
-}
 
 module.exports = {
   createZenMoneyTransactionStructure,
   createTransactionInZenMoney,
-  generateTransactionId,
-  formatTransactionForDisplay
+  generateTransactionId
 };
