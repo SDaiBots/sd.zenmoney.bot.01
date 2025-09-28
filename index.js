@@ -102,12 +102,14 @@ async function transcribeVoice(audioBuffer) {
 }
 
 // Функция обработки голосового сообщения
-async function handleVoiceMessage(chatId, voice, user, fullUserName) {
+async function handleVoiceMessage(chatId, voice, user, fullUserName, messageId) {
   try {
     console.log(`🎤 Получено голосовое сообщение от пользователя ${fullUserName}`);
     
     // Отправляем сообщение о начале обработки
-    const processingMessage = await bot.sendMessage(chatId, '🎤 Обрабатываю голосовое сообщение...');
+    const processingMessage = await bot.sendMessage(chatId, '🎤 Обрабатываю голосовое сообщение...', {
+      reply_to_message_id: messageId
+    });
     
     // Скачиваем аудиофайл
     const audioBuffer = await downloadVoiceFile(voice.file_id);
@@ -119,15 +121,20 @@ async function handleVoiceMessage(chatId, voice, user, fullUserName) {
     await bot.deleteMessage(chatId, processingMessage.message_id);
     
     if (!transcribedText || transcribedText.trim() === '') {
-      await bot.sendMessage(chatId, '❌ Не удалось распознать речь в голосовом сообщении. Попробуйте еще раз.');
+      await bot.sendMessage(chatId, '❌ Не удалось распознать речь в голосовом сообщении. Попробуйте еще раз.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
     
     // Отправляем сообщение с результатом транскрибации
-    await bot.sendMessage(chatId, `🎤 *Распознанный текст:*\n"${transcribedText}"`, { parse_mode: 'Markdown' });
+    await bot.sendMessage(chatId, `🎤 *Распознанный текст:*\n"${transcribedText}"`, { 
+      parse_mode: 'Markdown',
+      reply_to_message_id: messageId
+    });
     
     // Обрабатываем транскрибированный текст как голосовое сообщение
-    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true);
+    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true, null);
     
   } catch (error) {
     console.error('❌ Ошибка при обработке голосового сообщения:', error.message);
@@ -143,7 +150,9 @@ async function handleVoiceMessage(chatId, voice, user, fullUserName) {
       errorMessage = '📁 Ошибка при скачивании голосового файла. Попробуйте еще раз.';
     }
     
-    await bot.sendMessage(chatId, errorMessage);
+    await bot.sendMessage(chatId, errorMessage, {
+      reply_to_message_id: messageId
+    });
   }
 }
 
@@ -236,18 +245,18 @@ async function handleMessage(message) {
   
   // Обработка голосовых сообщений
   if (voice) {
-    await handleVoiceMessage(chatId, voice, user, fullUserName);
+    await handleVoiceMessage(chatId, voice, user, fullUserName, messageId);
     return;
   }
   
   // Обработка обычных сообщений - показываем структуру транзакции с ИИ-анализом
   if (text) {
-    handleTransactionWithAI(chatId, text, user, fullUserName);
+    handleTransactionWithAI(chatId, text, user, fullUserName, false, messageId);
   }
 }
 
 // Функция обработки транзакции с ИИ-анализом
-async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false) {
+async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false, replyToMessageId = null) {
   try {
     console.log(`🤖 Начинаем обработку сообщения от пользователя ${fullUserName}: "${text}"`);
     
@@ -288,7 +297,8 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoice
     const message = await bot.sendMessage(chatId, unifiedResult.messageText, {
       reply_markup: {
         inline_keyboard: keyboard
-      }
+      },
+      reply_to_message_id: replyToMessageId
     });
     
     console.log(`✅ Отправлено единое сообщение транзакции пользователю ${fullUserName} (ID: ${user.id})`);
@@ -303,7 +313,9 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoice
     console.error('❌ Ошибка при обработке транзакции с ИИ:', error.message);
     
     // Fallback: отправляем простое сообщение об ошибке
-    bot.sendMessage(chatId, `❌ Ошибка при обработке сообщения: ${error.message}`)
+    bot.sendMessage(chatId, `❌ Ошибка при обработке сообщения: ${error.message}`, {
+      reply_to_message_id: replyToMessageId
+    })
       .then(() => {
         console.log(`✅ Отправлено сообщение об ошибке пользователю ${fullUserName}`);
       })
@@ -468,36 +480,39 @@ function escapeMarkdownForCommands(text) {
 // Функция обработки команд
 function handleCommand(message) {
   const chatId = message.chat.id;
+  const messageId = message.message_id;
   const text = message.text;
   const user = message.from;
   const userName = user.first_name || user.username || 'Неизвестный пользователь';
   
   switch (text) {
     case '/start':
-      handleStartCommand(chatId, userName);
+      handleStartCommand(chatId, userName, messageId);
       break;
     case '/accounts':
-      handleAccountsCommand(chatId, userName);
+      handleAccountsCommand(chatId, userName, messageId);
       break;
     case '/accounts_upd':
-      handleAccountsUpdCommand(chatId, userName);
+      handleAccountsUpdCommand(chatId, userName, messageId);
       break;
     case '/tags_upd':
-      handleTagsUpdCommand(chatId, userName);
+      handleTagsUpdCommand(chatId, userName, messageId);
       break;
     case '/ai_settings':
-      handleAISettingsCommand(chatId, userName);
+      handleAISettingsCommand(chatId, userName, messageId);
       break;
     case '/ai_test':
-      handleAITestCommand(chatId, userName);
+      handleAITestCommand(chatId, userName, messageId);
       break;
     default:
-      bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.');
+      bot.sendMessage(chatId, 'Неизвестная команда. Используйте /start для начала работы.', {
+        reply_to_message_id: messageId
+      });
   }
 }
 
 // Обработчик команды /start
-function handleStartCommand(chatId, userName) {
+function handleStartCommand(chatId, userName, messageId) {
   const welcomeMessage = `Добро пожаловать в ZenMoney Bot, ${escapeMarkdown(userName)}!
 
 💰 *Основной функционал:*
@@ -517,7 +532,10 @@ function handleStartCommand(chatId, userName) {
 💡 *Как использовать:*
 Просто отправьте сообщение с описанием траты, например: "Купил хлеб в магазине"`;
   
-  bot.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' })
+  bot.sendMessage(chatId, welcomeMessage, { 
+    parse_mode: 'Markdown',
+    reply_to_message_id: messageId
+  })
     .then(() => {
       console.log(`Отправлено приветствие пользователю ${userName}`);
     })
@@ -527,17 +545,21 @@ function handleStartCommand(chatId, userName) {
 }
 
 // Обработчик команды /accounts
-async function handleAccountsCommand(chatId, userName) {
+async function handleAccountsCommand(chatId, userName, messageId) {
   const zenMoneyToken = process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
-    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
+      reply_to_message_id: messageId
+    });
     return;
   }
   
   try {
     // Отправляем сообщение о загрузке
-    const loadingMessage = await bot.sendMessage(chatId, 'Загружаем счета из ZenMoney...');
+    const loadingMessage = await bot.sendMessage(chatId, 'Загружаем счета из ZenMoney...', {
+      reply_to_message_id: messageId
+    });
     
     // Получаем данные из ZenMoney API
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -575,7 +597,9 @@ async function handleAccountsCommand(chatId, userName) {
       const account = accountList[i];
       const accountText = formatAccountDetails(account, i + 1, accountList.length);
       
-      await bot.sendMessage(chatId, accountText);
+      await bot.sendMessage(chatId, accountText, {
+        reply_to_message_id: messageId
+      });
       
       // Небольшая задержка между сообщениями для избежания rate limiting
       if (i < accountList.length - 1) {
@@ -632,16 +656,20 @@ function formatAccountDetails(account, index, total) {
 }
 
 // Обработчик команды /accounts_upd
-async function handleAccountsUpdCommand(chatId, userName) {
+async function handleAccountsUpdCommand(chatId, userName, messageId) {
   const zenMoneyToken = process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
-    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
+      reply_to_message_id: messageId
+    });
     return;
   }
   
   if (!supabaseClient) {
-    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.', {
+      reply_to_message_id: messageId
+    });
     return;
   }
   
@@ -650,7 +678,9 @@ async function handleAccountsUpdCommand(chatId, userName) {
   
   try {
     // Отправляем сообщение о начале процесса
-    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление счетов в Supabase...');
+    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление счетов в Supabase...', {
+      reply_to_message_id: messageId
+    });
     
     // Получаем данные из ZenMoney API
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -776,26 +806,34 @@ async function handleAccountsUpdCommand(chatId, userName) {
       } catch (editError) {
         console.error('Ошибка при редактировании сообщения:', editError);
         // Если не удалось отредактировать, отправляем новое сообщение
-        bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.');
+        bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.', {
+          reply_to_message_id: messageId
+        });
       }
     } else {
       // Если loadingMessage не определена, отправляем новое сообщение
-      bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.');
+      bot.sendMessage(chatId, '❌ Ошибка при обновлении счетов. Проверьте настройки и попробуйте позже.', {
+        reply_to_message_id: messageId
+      });
     }
   }
 }
 
 // Обработчик команды /tags_upd
-async function handleTagsUpdCommand(chatId, userName) {
+async function handleTagsUpdCommand(chatId, userName, messageId) {
   const zenMoneyToken = process.env.ZENMONEY_TOKEN;
   
   if (!zenMoneyToken) {
-    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.');
+    bot.sendMessage(chatId, 'ZenMoney API не настроен. Проверьте переменную ZENMONEY_TOKEN.', {
+      reply_to_message_id: messageId
+    });
     return;
   }
   
   if (!supabaseClient) {
-    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+    bot.sendMessage(chatId, 'Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.', {
+      reply_to_message_id: messageId
+    });
     return;
   }
   
@@ -804,7 +842,9 @@ async function handleTagsUpdCommand(chatId, userName) {
   
   try {
     // Отправляем сообщение о начале процесса
-    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление тегов в Supabase...');
+    loadingMessage = await bot.sendMessage(chatId, '🔄 Начинаем обновление тегов в Supabase...', {
+      reply_to_message_id: messageId
+    });
     
     // Получаем данные из ZenMoney API
     const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -919,20 +959,26 @@ async function handleTagsUpdCommand(chatId, userName) {
       } catch (editError) {
         console.error('Ошибка при редактировании сообщения:', editError);
         // Если не удалось отредактировать, отправляем новое сообщение
-        bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
+        bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.', {
+          reply_to_message_id: messageId
+        });
       }
     } else {
       // Если loadingMessage не определена, отправляем новое сообщение
-      bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.');
+      bot.sendMessage(chatId, '❌ Ошибка при обновлении тегов. Проверьте настройки и попробуйте позже.', {
+        reply_to_message_id: messageId
+      });
     }
   }
 }
 
 // Обработчик команды /ai_settings
-async function handleAISettingsCommand(chatId, userName) {
+async function handleAISettingsCommand(chatId, userName, messageId) {
   try {
     if (!supabaseClient) {
-      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
@@ -943,7 +989,10 @@ async function handleAISettingsCommand(chatId, userName) {
 
 ❌ Активная конфигурация ИИ не настроена.
 
-💡 Для настройки ИИ обратитесь к администратору.`, { parse_mode: 'Markdown' });
+💡 Для настройки ИИ обратитесь к администратору.`, { 
+        parse_mode: 'Markdown',
+        reply_to_message_id: messageId
+      });
       return;
     }
 
@@ -963,7 +1012,10 @@ async function handleAISettingsCommand(chatId, userName) {
 
 *Статус:* ${status}`;
 
-    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' })
+    bot.sendMessage(chatId, message, { 
+      parse_mode: 'Markdown',
+      reply_to_message_id: messageId
+    })
       .then(() => {
         console.log(`Отправлены настройки ИИ пользователю ${userName}`);
       })
@@ -973,19 +1025,25 @@ async function handleAISettingsCommand(chatId, userName) {
 
   } catch (error) {
     console.error('Ошибка при получении настроек ИИ:', error);
-    bot.sendMessage(chatId, '❌ Ошибка при получении настроек ИИ. Попробуйте позже.');
+    bot.sendMessage(chatId, '❌ Ошибка при получении настроек ИИ. Попробуйте позже.', {
+      reply_to_message_id: messageId
+    });
   }
 }
 
 // Обработчик команды /ai_test
-async function handleAITestCommand(chatId, userName) {
+async function handleAITestCommand(chatId, userName, messageId) {
   try {
     if (!supabaseClient) {
-      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.');
+      bot.sendMessage(chatId, '❌ Supabase не настроен. Проверьте переменные SB_PROJECT_ID и SB_TOKEN.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
-    const loadingMessage = await bot.sendMessage(chatId, '🧪 Тестируем ИИ-функционал...');
+    const loadingMessage = await bot.sendMessage(chatId, '🧪 Тестируем ИИ-функционал...', {
+      reply_to_message_id: messageId
+    });
 
     // Импортируем функцию тестирования
     const { testAIFunctionality } = require('./src/ai/analyzer');
@@ -1027,7 +1085,9 @@ ${testResult.testAnalysis.tags?.length > 0 ?
 
   } catch (error) {
     console.error('Ошибка при тестировании ИИ:', error);
-    bot.sendMessage(chatId, '❌ Ошибка при тестировании ИИ. Попробуйте позже.');
+    bot.sendMessage(chatId, '❌ Ошибка при тестировании ИИ. Попробуйте позже.', {
+      reply_to_message_id: messageId
+    });
   }
 }
 
@@ -1153,20 +1213,26 @@ async function handleCallbackQuery(callbackQuery) {
 async function handleAITagSelection(chatId, messageId, tagId, originalMessage) {
   try {
     if (!supabaseClient) {
-      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.');
+      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
     // Получаем информацию о выбранном теге
     const tagsResult = await supabaseClient.getAllTagsWithParents();
     if (!tagsResult.success || !tagsResult.data) {
-      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.');
+      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
     const selectedTag = tagsResult.data.find(tag => tag.id === tagId);
     if (!selectedTag) {
-      bot.sendMessage(chatId, '❌ Тег не найден.');
+      bot.sendMessage(chatId, '❌ Тег не найден.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
@@ -1189,7 +1255,9 @@ ${selectedTag.description ? `📝 *Описание:* ${escapeMarkdown(selectedT
 
   } catch (error) {
     console.error('❌ Ошибка при обработке выбора тега ИИ:', error.message);
-    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.');
+    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.', {
+      reply_to_message_id: messageId
+    });
   }
 }
 
@@ -1617,20 +1685,26 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
 async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessage) {
   try {
     if (!supabaseClient) {
-      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.');
+      bot.sendMessage(chatId, '❌ Ошибка: Supabase не настроен.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
     // Получаем информацию о выбранном теге
     const tagsResult = await supabaseClient.getAllTagsWithParents();
     if (!tagsResult.success || !tagsResult.data) {
-      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.');
+      bot.sendMessage(chatId, '❌ Ошибка при получении информации о теге.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
     const selectedTag = tagsResult.data.find(tag => tag.id === tagId);
     if (!selectedTag) {
-      bot.sendMessage(chatId, '❌ Тег не найден.');
+      bot.sendMessage(chatId, '❌ Тег не найден.', {
+        reply_to_message_id: messageId
+      });
       return;
     }
 
@@ -1690,7 +1764,9 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
 
   } catch (error) {
     console.error('❌ Ошибка при обработке выбора тега в едином сообщении:', error.message);
-    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.');
+    bot.sendMessage(chatId, '❌ Ошибка при обработке выбора тега.', {
+      reply_to_message_id: messageId
+    });
   }
 }
 
