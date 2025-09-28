@@ -134,7 +134,7 @@ async function handleVoiceMessage(chatId, voice, user, fullUserName, messageId) 
     });
     
     // Обрабатываем транскрибированный текст как голосовое сообщение
-    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true, null);
+    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true, messageId);
     
   } catch (error) {
     console.error('❌ Ошибка при обработке голосового сообщения:', error.message);
