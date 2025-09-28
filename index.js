@@ -77,23 +77,16 @@ async function transcribeVoice(audioBuffer) {
       apiKey: process.env.OPENAI_API_KEY
     });
     
-    // Создаем FormData для отправки файла
-    const FormData = require('form-data');
-    const form = new FormData();
-    
-    // Добавляем аудиофайл в форму
-    form.append('file', audioBuffer, {
-      filename: 'voice.ogg',
-      contentType: 'audio/ogg'
+    // Создаем File объект для OpenAI API
+    const audioFile = new File([audioBuffer], 'voice.ogg', {
+      type: 'audio/ogg'
     });
-    form.append('model', 'whisper-1');
-    form.append('language', 'ru'); // Указываем русский язык для лучшего распознавания
     
     // Отправляем запрос к Whisper API
     const response = await openai.audio.transcriptions.create({
-      file: form.getBuffer(),
+      file: audioFile,
       model: 'whisper-1',
-      language: 'ru'
+      language: 'ru' // Указываем русский язык для лучшего распознавания
     });
     
     const transcribedText = response.text.trim();
