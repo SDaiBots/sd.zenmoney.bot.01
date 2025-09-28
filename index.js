@@ -355,7 +355,6 @@ async function loadUserAccounts(userId, token) {
     // Преобразуем счета в массив для вставки
     const accountsArray = Object.entries(accounts).map(([accountId, accountData]) => ({
       id: accountId,
-      user_id: accountData.user,
       instrument_id: accountData.instrument,
       type: accountData.type,
       title: accountData.title,
