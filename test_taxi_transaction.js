@@ -25,10 +25,10 @@ async function testTaxiTransaction() {
     // Данные транзакции на основе анализа сообщения "такси 100 000 карта"
     const transactionData = {
       tag: {
-        title: 'Продукты' // По умолчанию, так как ИИ не анализировал
+        title: 'Такси' // Используем реальный тег из Supabase
       },
       account: {
-        name: 'Карта', // Определено по ключевому слову "карта"
+        name: 'DC KPB UZS 01 VISA', // Используем реальный счет из Supabase
         type: 'card'
       },
       amount: 100000, // 100 000 рублей

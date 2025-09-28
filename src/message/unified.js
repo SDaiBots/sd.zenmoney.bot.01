@@ -145,16 +145,16 @@ function createUnifiedTransactionKeyboard(transactionData, hasMultipleTags, aiTa
         callback_data: 'unified_account_cash'
       },
       {
-        text: '✅',
-        callback_data: 'unified_apply'
+        text: '🪪',
+        callback_data: 'unified_account_shared_card'
       },
       {
         text: '❌',
         callback_data: 'unified_cancel'
       },
       {
-        text: '✏️',
-        callback_data: 'unified_edit'
+        text: '✅',
+        callback_data: 'unified_apply'
       }
     ];
     

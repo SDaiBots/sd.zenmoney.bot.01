@@ -1128,6 +1128,10 @@ async function handleCallbackQuery(callbackQuery) {
       await handleUnifiedAccountSelection(chatId, messageId, 'default_cash', callbackQuery.message.text);
       break;
       
+    case 'unified_account_shared_card':
+      await handleUnifiedAccountSelection(chatId, messageId, 'shared_card', callbackQuery.message.text);
+      break;
+      
     default:
       // Обработка callback для ИИ тегов (старые)
       if (data.startsWith('ai_tag_')) {
@@ -1517,6 +1521,11 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
       accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
         ? settingResult.value.trim() 
         : 'Бумажник';
+    } else if (settingName === 'shared_card') {
+      // Если настройка найдена и не пустая, используем её, иначе используем значение по умолчанию
+      accountName = (settingResult.success && settingResult.value && settingResult.value.trim() !== '') 
+        ? settingResult.value.trim() 
+        : 'Общая карта';
     } else {
       accountName = 'Бумажник';
     }
@@ -1567,9 +1576,9 @@ async function handleUnifiedAccountSelection(chatId, messageId, settingName, ori
     const mainButtons = [
       { text: '💳', callback_data: 'unified_account_card' },
       { text: '💵', callback_data: 'unified_account_cash' },
-      { text: '✅', callback_data: 'unified_apply' },
+      { text: '🪪', callback_data: 'unified_account_shared_card' },
       { text: '❌', callback_data: 'unified_cancel' },
-      { text: '✏️', callback_data: 'unified_edit' }
+      { text: '✅', callback_data: 'unified_apply' }
     ];
     
     keyboard.push(mainButtons);
@@ -1660,9 +1669,9 @@ async function handleUnifiedTagSelection(chatId, messageId, tagId, originalMessa
     const mainButtons = [
       { text: '💳', callback_data: 'unified_account_card' },
       { text: '💵', callback_data: 'unified_account_cash' },
-      { text: '✅', callback_data: 'unified_apply' },
+      { text: '🪪', callback_data: 'unified_account_shared_card' },
       { text: '❌', callback_data: 'unified_cancel' },
-      { text: '✏️', callback_data: 'unified_edit' }
+      { text: '✅', callback_data: 'unified_apply' }
     ];
     
     keyboard.push(mainButtons);
