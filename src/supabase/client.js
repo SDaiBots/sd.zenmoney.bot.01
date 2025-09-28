@@ -535,6 +535,34 @@ class SupabaseClient {
   }
 
   /**
+   * Обновление zm_user_id для пользователя
+   */
+  async updateUserZmUserId(userId, zmUserId) {
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .update({
+          zm_user_id: zmUserId,
+          last_activity: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('❌ Ошибка при обновлении zm_user_id пользователя:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Получение пользователя по telegram_id
    */
   async getUserByTelegramId(telegramId) {

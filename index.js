@@ -273,6 +273,49 @@ async function validateZenMoneyToken(token) {
   }
 }
 
+// Функция получения zm_user_id из ZenMoney
+async function getZenMoneyUserId(token) {
+  try {
+    const response = await axios.post('https://api.zenmoney.ru/v8/diff', {
+      currentClientTimestamp: Math.floor(Date.now() / 1000),
+      serverTimestamp: 0
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'PellaZenMoneyBot/1.0'
+      },
+      timeout: 30000
+    });
+
+    const data = response.data;
+    
+    // Получаем user_id из любого счета или тега
+    const accounts = data.account || {};
+    const tags = data.tag || {};
+    
+    // Ищем user_id в счетах
+    for (const [accountId, accountData] of Object.entries(accounts)) {
+      if (accountData.user) {
+        return { success: true, zm_user_id: accountData.user };
+      }
+    }
+    
+    // Ищем user_id в тегах
+    for (const [tagId, tagData] of Object.entries(tags)) {
+      if (tagData.user) {
+        return { success: true, zm_user_id: tagData.user };
+      }
+    }
+    
+    return { success: false, error: 'user_id не найден в данных ZenMoney' };
+    
+  } catch (error) {
+    console.error('❌ Ошибка при получении zm_user_id:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // Функция загрузки тегов для пользователя
 async function loadUserTags(userId, token) {
   try {
@@ -742,6 +785,12 @@ async function showSetupOptions(chatId, user, messageId, hasTags = false, hasAcc
 
 Для завершения настройки выполните следующие действия:`;
 
+  if (!user.zm_user_id) {
+    message += `\n\n🆔 Получить zm_user_id - получить ID пользователя из ZenMoney`;
+  } else {
+    message += `\n\n✅ zm_user_id уже получен: ${user.zm_user_id}`;
+  }
+
   if (!hasTags) {
     message += `\n\n📋 Загрузить статьи (теги) - синхронизация категорий`;
   } else {
@@ -757,6 +806,10 @@ async function showSetupOptions(chatId, user, messageId, hasTags = false, hasAcc
   message += `\n\n➡️ Перейти дальше - пропустить настройку`;
 
   const keyboard = [];
+  
+  if (!user.zm_user_id) {
+    keyboard.push([{ text: '🆔 Получить zm_user_id', callback_data: `get_zm_user_id_${user.id}` }]);
+  }
   
   if (!hasTags) {
     keyboard.push([{ text: '📋 Загрузить статьи', callback_data: `load_tags_${user.id}` }]);
@@ -1402,7 +1455,10 @@ async function handleCallbackQuery(callbackQuery) {
         await handleUnifiedTagSelection(chatId, messageId, tagId, callbackQuery.message.text);
       } 
       // Обработка callback для настройки пользователя
-      else if (data.startsWith('load_tags_')) {
+      else if (data.startsWith('get_zm_user_id_')) {
+        const userId = parseInt(data.replace('get_zm_user_id_', ''));
+        await handleGetZmUserId(chatId, userId, messageId);
+      } else if (data.startsWith('load_tags_')) {
         const userId = parseInt(data.replace('load_tags_', ''));
         await handleLoadTags(chatId, userId, messageId);
       } else if (data.startsWith('load_accounts_')) {
@@ -1419,6 +1475,80 @@ async function handleCallbackQuery(callbackQuery) {
 
 
 // ===== ОБРАБОТЧИКИ ДЛЯ НАСТРОЙКИ ПОЛЬЗОВАТЕЛЕЙ =====
+
+// Обработчик получения zm_user_id
+async function handleGetZmUserId(chatId, userId, messageId) {
+  try {
+    // Получаем пользователя по ID из базы данных
+    const { data, error } = await supabaseClient.client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !data) {
+      throw new Error('Пользователь не найден');
+    }
+    
+    const user = data;
+    
+    if (!user.zenmoney_token) {
+      await bot.sendMessage(chatId, '❌ Токен ZenMoney не настроен', {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Отправляем сообщение о начале получения
+    const loadingMessage = await bot.sendMessage(chatId, '🔄 Получаем zm_user_id из ZenMoney...', {
+      reply_to_message_id: messageId
+    });
+    
+    // Получаем zm_user_id
+    const getResult = await getZenMoneyUserId(user.zenmoney_token);
+    
+    // Удаляем сообщение о загрузке
+    await bot.deleteMessage(chatId, loadingMessage.message_id);
+    
+    if (!getResult.success) {
+      await bot.sendMessage(chatId, `❌ Ошибка при получении zm_user_id: ${getResult.error}`, {
+        reply_to_message_id: messageId
+      });
+      return;
+    }
+    
+    // Обновляем zm_user_id в базе данных
+    const updateResult = await supabaseClient.updateUserZmUserId(user.id, getResult.zm_user_id);
+    
+    if (!updateResult.success) {
+      throw new Error(updateResult.error);
+    }
+    
+    // Показываем результат
+    await bot.sendMessage(chatId, `🆔 zm_user_id успешно получен и сохранен!\n\nID пользователя в ZenMoney: ${getResult.zm_user_id}`, {
+      reply_to_message_id: messageId
+    });
+    
+    // Проверяем, нужно ли показать опции настройки снова
+    const tagsResult = await supabaseClient.getUserTags(user.id);
+    const accountsResult = await supabaseClient.getUserAccounts(user.id);
+    
+    const hasTags = tagsResult.success && tagsResult.data && tagsResult.data.length > 0;
+    const hasAccounts = accountsResult.success && accountsResult.data && accountsResult.data.length > 0;
+    
+    if (!hasTags || !hasAccounts) {
+      await showSetupOptions(chatId, updateResult.data, messageId, hasTags, hasAccounts);
+    } else {
+      await showSetupComplete(chatId, updateResult.data, messageId);
+    }
+    
+  } catch (error) {
+    console.error('❌ Ошибка при получении zm_user_id:', error.message);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при получении zm_user_id', {
+      reply_to_message_id: messageId
+    });
+  }
+}
 
 // Обработчик загрузки тегов
 async function handleLoadTags(chatId, userId, messageId) {
@@ -1596,9 +1726,15 @@ async function showSetupComplete(chatId, user, messageId) {
     const tagsCount = tagsResult.success && tagsResult.data ? tagsResult.data.length : 0;
     const accountsCount = accountsResult.success && accountsResult.data ? accountsResult.data.length : 0;
     
-    const message = `🎉 Настройка завершена!
+    let message = `🎉 Настройка завершена!
 
-📊 Статистика:
+📊 Статистика:`;
+
+    if (user.zm_user_id) {
+      message += `\n- ID пользователя в ZenMoney: ${user.zm_user_id}`;
+    }
+
+    message += `
 - Статей загружено: ${tagsCount}
 - Счетов загружено: ${accountsCount}
 

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     first_name VARCHAR(255),
     last_name VARCHAR(255),
     zenmoney_token TEXT,
+    zm_user_id INTEGER, -- ID пользователя в ZenMoney
     is_active BOOLEAN DEFAULT false,
     is_admin BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
