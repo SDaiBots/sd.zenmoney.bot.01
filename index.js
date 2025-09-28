@@ -1424,13 +1424,18 @@ async function handleCallbackQuery(callbackQuery) {
 // Обработчик загрузки тегов
 async function handleLoadTags(chatId, userId, messageId) {
   try {
-    // Получаем пользователя
-    const userResult = await supabaseClient.getUserByTelegramId(userId);
-    if (!userResult.success || !userResult.data) {
+    // Получаем пользователя по ID из базы данных
+    const { data, error } = await supabaseClient.client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !data) {
       throw new Error('Пользователь не найден');
     }
     
-    const user = userResult.data;
+    const user = data;
     
     if (!user.zenmoney_token) {
       await bot.sendMessage(chatId, '❌ Токен ZenMoney не настроен', {
@@ -1489,13 +1494,18 @@ async function handleLoadTags(chatId, userId, messageId) {
 // Обработчик загрузки счетов
 async function handleLoadAccounts(chatId, userId, messageId) {
   try {
-    // Получаем пользователя
-    const userResult = await supabaseClient.getUserByTelegramId(userId);
-    if (!userResult.success || !userResult.data) {
+    // Получаем пользователя по ID из базы данных
+    const { data, error } = await supabaseClient.client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !data) {
       throw new Error('Пользователь не найден');
     }
     
-    const user = userResult.data;
+    const user = data;
     
     if (!user.zenmoney_token) {
       await bot.sendMessage(chatId, '❌ Токен ZenMoney не настроен', {
@@ -1554,13 +1564,18 @@ async function handleLoadAccounts(chatId, userId, messageId) {
 // Обработчик пропуска настройки
 async function handleSkipSetup(chatId, userId, messageId) {
   try {
-    // Получаем пользователя
-    const userResult = await supabaseClient.getUserByTelegramId(userId);
-    if (!userResult.success || !userResult.data) {
+    // Получаем пользователя по ID из базы данных
+    const { data, error } = await supabaseClient.client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !data) {
       throw new Error('Пользователь не найден');
     }
     
-    const user = userResult.data;
+    const user = data;
     
     await showSetupComplete(chatId, user, messageId);
     
