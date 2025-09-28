@@ -15,9 +15,10 @@ const {
  * @param {Object} aiResult - Результат ИИ-анализа тегов
  * @param {Object} settings - Настройки из Supabase
  * @param {Object} supabaseClient - Клиент Supabase для получения информации о счетах
+ * @param {boolean} isVoiceMessage - Флаг, указывающий, что сообщение создано из голосового
  * @returns {Object} - Объект с текстом сообщения и данными транзакции
  */
-async function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}, supabaseClient = null) {
+async function createUnifiedTransactionMessage(userMessage, aiResult, settings = {}, supabaseClient = null, isVoiceMessage = false) {
   try {
     console.log('📝 Создаем единое сообщение транзакции...');
     
@@ -58,15 +59,18 @@ async function createUnifiedTransactionMessage(userMessage, aiResult, settings =
     // 7. Форматируем сумму
     const formattedAmount = formatAmount(amount);
     
-    // 8. Создаем текст сообщения
+    // 8. Форматируем комментарий (добавляем эмодзи для голосовых сообщений)
+    const formattedComment = isVoiceMessage ? `💬 ${userMessage}` : userMessage;
+    
+    // 9. Создаем текст сообщения
     const messageText = `Новая запись от ${today}
 
 🛍️ ${tag}
 👛 ${accountName}
 💲 ${formattedAmount}
-💬 ${userMessage}`;
+💬 ${formattedComment}`;
     
-    // 9. Создаем объект с данными транзакции
+    // 10. Создаем объект с данными транзакции
     const transactionData = {
       tag: {
         id: aiResult && aiResult.tags && aiResult.tags.length > 0 ? aiResult.tags[0].id : null,
@@ -78,7 +82,7 @@ async function createUnifiedTransactionMessage(userMessage, aiResult, settings =
       },
       amount: amount,
       formattedAmount: formattedAmount,
-      comment: userMessage,
+      comment: formattedComment,
       date: today,
       additionalTags: additionalTags,
       aiConfidence: aiResult ? aiResult.confidence : 0

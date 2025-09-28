@@ -125,8 +125,8 @@ async function handleVoiceMessage(chatId, voice, user, fullUserName) {
     // Отправляем сообщение с результатом транскрибации
     await bot.sendMessage(chatId, `🎤 *Распознанный текст:*\n"${transcribedText}"`, { parse_mode: 'Markdown' });
     
-    // Обрабатываем транскрибированный текст как обычное сообщение
-    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName);
+    // Обрабатываем транскрибированный текст как голосовое сообщение
+    await handleTransactionWithAI(chatId, transcribedText, user, fullUserName, true);
     
   } catch (error) {
     console.error('❌ Ошибка при обработке голосового сообщения:', error.message);
@@ -246,7 +246,7 @@ async function handleMessage(message) {
 }
 
 // Функция обработки транзакции с ИИ-анализом
-async function handleTransactionWithAI(chatId, text, user, fullUserName) {
+async function handleTransactionWithAI(chatId, text, user, fullUserName, isVoiceMessage = false) {
   try {
     console.log(`🤖 Начинаем обработку сообщения от пользователя ${fullUserName}: "${text}"`);
     
@@ -274,7 +274,7 @@ async function handleTransactionWithAI(chatId, text, user, fullUserName) {
     const aiResult = await analyzeMessageWithAI(text, supabaseClient);
     
     // Создаем единое сообщение транзакции
-    const unifiedResult = await createUnifiedTransactionMessage(text, aiResult, settings, supabaseClient);
+    const unifiedResult = await createUnifiedTransactionMessage(text, aiResult, settings, supabaseClient, isVoiceMessage);
     
     if (!unifiedResult.success) {
       throw new Error(unifiedResult.error);
