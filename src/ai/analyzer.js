@@ -1,5 +1,5 @@
 const AIClient = require('./client');
-const SupabaseClient = require('../supabase/client');
+const SupabaseClient = require('../database/supabase/client');
 
 /**
  * Анализ сообщения пользователя с помощью ИИ
