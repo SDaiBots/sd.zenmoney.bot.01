@@ -274,17 +274,18 @@ async function validateZenMoneyToken(token) {
 }
 
 // Функция для безопасного преобразования ZenMoney ID в UUID
-function zenMoneyIdToUuid(zenMoneyId) {
+function zenMoneyIdToUuid(zenMoneyId, userId = null) {
   try {
     // Если ID уже в формате UUID, возвращаем как есть
     if (zenMoneyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
       return zenMoneyId;
     }
     
-    // Для числовых ID создаем детерминистический UUID
-    // Используем MD5 хеш от строки с префиксом
+    // Для числовых ID создаем детерминистический UUID с учетом userId
+    // Используем MD5 хеш от строки с префиксом и userId для уникальности
     const crypto = require('crypto');
-    const hash = crypto.createHash('md5').update(`zm-${zenMoneyId}`).digest('hex');
+    const seedString = userId ? `zm-${zenMoneyId}-user-${userId}` : `zm-${zenMoneyId}`;
+    const hash = crypto.createHash('md5').update(seedString).digest('hex');
     
     // Формируем UUID из хеша
     return [
@@ -297,6 +298,7 @@ function zenMoneyIdToUuid(zenMoneyId) {
     
   } catch (error) {
     // Если что-то пошло не так, создаем случайный UUID
+    console.error('❌ Ошибка при генерации UUID:', error.message);
     const crypto = require('crypto');
     return crypto.randomUUID();
   }
@@ -386,9 +388,9 @@ async function loadUserTags(userId, token) {
       }
 
       return {
-        id: zenMoneyIdToUuid(tagId), // Преобразуем ZenMoney ID в UUID
+        id: zenMoneyIdToUuid(tagId, userId), // Преобразуем ZenMoney ID в UUID с учетом userId
         title: tagData.title,
-        parent_id: tagData.parent ? zenMoneyIdToUuid(tagData.parent) : null,
+        parent_id: tagData.parent ? zenMoneyIdToUuid(tagData.parent, userId) : null,
         color: tagData.color || null,
         icon: tagData.icon || null,
         picture: tagData.picture || null,
@@ -452,7 +454,7 @@ async function loadUserAccounts(userId, token) {
       }
 
       return {
-        id: zenMoneyIdToUuid(accountId), // Преобразуем ZenMoney ID в UUID
+        id: zenMoneyIdToUuid(accountId, userId), // Преобразуем ZenMoney ID в UUID с учетом userId
         instrument_id: accountData.instrument,
         type: accountData.type,
         title: accountData.title,
