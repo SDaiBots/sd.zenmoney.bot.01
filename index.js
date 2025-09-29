@@ -273,6 +273,35 @@ async function validateZenMoneyToken(token) {
   }
 }
 
+// Функция для безопасного преобразования ZenMoney ID в UUID
+function zenMoneyIdToUuid(zenMoneyId) {
+  try {
+    // Если ID уже в формате UUID, возвращаем как есть
+    if (zenMoneyId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      return zenMoneyId;
+    }
+    
+    // Для числовых ID создаем детерминистический UUID
+    // Используем MD5 хеш от строки с префиксом
+    const crypto = require('crypto');
+    const hash = crypto.createHash('md5').update(`zm-${zenMoneyId}`).digest('hex');
+    
+    // Формируем UUID из хеша
+    return [
+      hash.substring(0, 8),
+      hash.substring(8, 12),
+      hash.substring(12, 16),
+      hash.substring(16, 20),
+      hash.substring(20, 32)
+    ].join('-');
+    
+  } catch (error) {
+    // Если что-то пошло не так, создаем случайный UUID
+    const crypto = require('crypto');
+    return crypto.randomUUID();
+  }
+}
+
 // Функция получения zm_user_id из ZenMoney
 async function getZenMoneyUserId(token) {
   try {
@@ -342,19 +371,38 @@ async function loadUserTags(userId, token) {
     await supabaseClient.clearUserTags(userId);
     
     // Преобразуем теги в массив для вставки
-    const tagsArray = Object.entries(tags).map(([tagId, tagData]) => ({
-      zm_tag_id: tagId, // Используем zm_tag_id вместо id для избежания конфликта UUID
-      title: tagData.title,
-      parent_id: tagData.parent || null,
-      color: tagData.color || null,
-      icon: tagData.icon || null,
-      budget_income: tagData.budget_income || false,
-      budget_outcome: tagData.budget_outcome || false,
-      required: tagData.required || false,
-      show_income: tagData.show_income || false,
-      show_outcome: tagData.show_outcome || false,
-      created_at: new Date().toISOString()
-    }));
+    const tagsArray = Object.entries(tags).map(([tagId, tagData]) => {
+      // Безопасная обработка даты changed
+      let changedDate = null;
+      if (tagData.changed && typeof tagData.changed === 'number' && tagData.changed > 0) {
+        try {
+          const date = new Date(tagData.changed * 1000);
+          if (!isNaN(date.getTime())) {
+            changedDate = date.toISOString();
+          }
+        } catch (error) {
+          console.warn(`Неверная дата changed для тега ${tagId}:`, tagData.changed);
+        }
+      }
+
+      return {
+        id: zenMoneyIdToUuid(tagId), // Преобразуем ZenMoney ID в UUID
+        title: tagData.title,
+        parent_id: tagData.parent ? zenMoneyIdToUuid(tagData.parent) : null,
+        color: tagData.color || null,
+        icon: tagData.icon || null,
+        picture: tagData.picture || null,
+        budget_income: tagData.budget_income || false,
+        budget_outcome: tagData.budget_outcome || false,
+        required: tagData.required || false,
+        show_income: tagData.show_income || false,
+        show_outcome: tagData.show_outcome !== false,
+        archive: tagData.archive || false,
+        static_id: tagData.staticId || null,
+        changed: changedDate,
+        created_at: new Date().toISOString()
+      };
+    });
 
     // Сохраняем теги в базу данных
     const insertResult = await supabaseClient.insertUserTags(userId, tagsArray);
@@ -396,21 +444,42 @@ async function loadUserAccounts(userId, token) {
     await supabaseClient.clearUserAccounts(userId);
     
     // Преобразуем счета в массив для вставки
-    const accountsArray = Object.entries(accounts).map(([accountId, accountData]) => ({
-      zm_account_id: accountId, // Используем zm_account_id вместо id для избежания конфликта UUID
-      instrument_id: accountData.instrument,
-      type: accountData.type,
-      title: accountData.title,
-      balance: accountData.balance || 0,
-      start_balance: accountData.start_balance || 0,
-      credit_limit: accountData.credit_limit || 0,
-      in_balance: accountData.in_balance !== false,
-      savings: accountData.savings || false,
-      enable_correction: accountData.enable_correction !== false,
-      enable_sms: accountData.enable_sms !== false,
-      archive: accountData.archive || false,
-      created_at: new Date().toISOString()
-    }));
+    const accountsArray = Object.entries(accounts).map(([accountId, accountData]) => {
+      // Безопасная обработка даты changed
+      let changedValue = 0;
+      if (accountData.changed && typeof accountData.changed === 'number') {
+        changedValue = accountData.changed;
+      }
+
+      return {
+        id: zenMoneyIdToUuid(accountId), // Преобразуем ZenMoney ID в UUID
+        instrument_id: accountData.instrument,
+        type: accountData.type,
+        title: accountData.title,
+        balance: accountData.balance || 0,
+        start_balance: accountData.start_balance || 0,
+        credit_limit: accountData.credit_limit || 0,
+        in_balance: accountData.in_balance !== false,
+        private: accountData.private || false,
+        savings: accountData.savings || false,
+        archive: accountData.archive || false,
+        enable_correction: accountData.enable_correction !== false,
+        enable_sms: accountData.enable_sms || false,
+        balance_correction_type: accountData.balanceCorrectionType || null,
+        capitalization: accountData.capitalization || null,
+        percent: accountData.percent || null,
+        start_date: accountData.startDate || null,
+        end_date_offset: accountData.endDateOffset || null,
+        end_date_offset_interval: accountData.endDateOffsetInterval || null,
+        payoff_step: accountData.payoffStep || null,
+        payoff_interval: accountData.payoffInterval || null,
+        company_id: accountData.companyId || null,
+        role: accountData.role || null,
+        sync_id: accountData.syncId || null,
+        changed: changedValue,
+        created_at: new Date().toISOString()
+      };
+    });
 
     // Сохраняем счета в базу данных
     const insertResult = await supabaseClient.insertUserAccounts(userId, accountsArray);
