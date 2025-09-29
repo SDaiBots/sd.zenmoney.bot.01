@@ -343,7 +343,7 @@ async function loadUserTags(userId, token) {
     
     // Преобразуем теги в массив для вставки
     const tagsArray = Object.entries(tags).map(([tagId, tagData]) => ({
-      id: tagId,
+      zm_tag_id: tagId, // Используем zm_tag_id вместо id для избежания конфликта UUID
       title: tagData.title,
       parent_id: tagData.parent || null,
       color: tagData.color || null,
@@ -397,7 +397,7 @@ async function loadUserAccounts(userId, token) {
     
     // Преобразуем счета в массив для вставки
     const accountsArray = Object.entries(accounts).map(([accountId, accountData]) => ({
-      id: accountId,
+      zm_account_id: accountId, // Используем zm_account_id вместо id для избежания конфликта UUID
       instrument_id: accountData.instrument,
       type: accountData.type,
       title: accountData.title,
